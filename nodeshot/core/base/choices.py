@@ -1,4 +1,5 @@
 from django.utils.translation import ugettext_lazy as _
+from django.conf import settings
 
 NODE_STATUS = (
     (-1, _('archived')),
@@ -6,15 +7,16 @@ NODE_STATUS = (
     (1, _('planned')),
     (2, _('testing')),
     (3, _('active')),
+    (4, _('mantainance')),
 )
 
 ROUTING_PROTOCOLS = (
-    ('batman','B.A.T.M.A.N.'),
-    ('babel','Babel'),
-    ('olsr','OLSR'),
-    ('bgp','BGP'),
-    ('static',_('Static Routing')),
-    ('none',_('None')),
+    ('batman', 'Batman-adv'),
+    ('babel', 'Babel'),
+    ('olsr', 'OLSR'),
+    ('bgp', 'BGP'),
+    ('static', _('Static Routing')),
+    ('none', _('None')),
 )
 
 DEVICE_TYPES = (
@@ -157,11 +159,9 @@ ETHERNET_STANDARDS = (
     ('10/100/1000', '10/100/1000 Gigabit Ethernet'),
 )
 
-ACCESS_LEVELS = (
-    ('public', _('public')),
-    ('community', _('community')),
-    ('private', _('private')),
-)
+ACCESS_LEVELS = [('public', _('public'))]
+ACCESS_LEVELS += [group for group in settings.NODESHOT['CHOICES']['ACCESS_LEVELS']]
+ACCESS_LEVELS += [('private', _('private'))]
 
 IP_PROTOCOLS = (
     ('ipv4', 'ipv4'),
@@ -169,11 +169,12 @@ IP_PROTOCOLS = (
 )
 
 LINK_STATUS = (
-    (-1, _('aborted')),
-    (0, _('disconnected')),
-    (1, _('operational')), 
-    (2, _('planned')),
-    (3, _('released')),
+    (-3, _('archived')),
+    (-2, _('disconnected')),
+    (-1, _('down')),
+    (0, _('planned')),
+    (1, _('testing')),
+    (2, _('active')), 
 )
 
 LINK_TYPE = (
@@ -194,14 +195,11 @@ LOGIN_TYPES = (
     (2, _('write')),
 )
 
-PORT_PROTOCOLS = (
-    ('tcp', 'TCP'),
-    ('udp', 'UDP'),
-)
-
 DEVICE_STATUS = (
-    (1, 'reachable'),
-    (2, 'not reachable'),
+    (-2, _('archived')),
+    (-1, _('unplugged')),
+    (0, _('not reachable')),
+    (1, _('reachable')),
 )
 
 SERVICE_STATUS = (
@@ -219,4 +217,9 @@ PLANNED_STATUS = (
 DUPLEX_CHOICES = (
     ('full', 'full-duplex'),
     ('half', 'half-duplex')
+)
+
+# from 0 to 18
+MAP_ZOOM = (
+    [(n, n) for n in range(0, 19)]
 )

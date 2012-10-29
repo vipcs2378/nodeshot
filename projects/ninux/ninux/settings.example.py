@@ -34,7 +34,7 @@ TIME_ZONE = 'Europe/Rome'
 # http://www.i18nguy.com/unicode/language-identifiers.html
 LANGUAGE_CODE = 'en-gb'
 
-SITE_ID = 1
+#SITE_ID = 1
 
 # If you set this to False, Django will make some optimizations so as not
 # to load the internationalization machinery.
@@ -47,7 +47,9 @@ USE_L10N = True
 # If you set this to False, Django will not use timezone-aware datetimes.
 USE_TZ = True
 
-BASE_URL = 'http://YOUR_URL_HERE'
+SITE_NAME = 'Ninux.org'
+SITE_DOMAIN = 'localhost'
+BASE_URL = 'http://%s/' % SITE_DOMAIN
 
 # Absolute filesystem path to the directory that will hold user-uploaded files.
 # Example: "/home/media/media.lawrence.com/media/"
@@ -108,7 +110,11 @@ ROOT_URLCONF = 'myproject.urls' # replace myproject with the name of your projec
 # Python dotted path to the WSGI application used by Django's runserver.
 WSGI_APPLICATION = 'myproject.wsgi.application'
 
+import nodeshot
+
 TEMPLATE_DIRS = (
+    '%s/core/mailing/templates' % os.path.dirname(os.path.realpath(nodeshot.__file__)),
+    '%s/core/zones/templates' % os.path.dirname(os.path.realpath(nodeshot.__file__))
     # Put strings here, like "/home/html/django_templates" or "C:/www/django/templates".
     # Always use forward slashes, even on Windows.
     # Don't forget to use absolute paths, not relative paths.
@@ -118,11 +124,13 @@ INSTALLED_APPS = (
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
-    'django.contrib.sites',
+    #'django.contrib.sites',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'grappelli',
     # Uncomment the next line to enable the admin:
     'django.contrib.admin',
+    'nodeshot.core.zones',
     'nodeshot.core.nodes',
     'nodeshot.core.network',
     'nodeshot.core.links',
@@ -163,3 +171,89 @@ LOGGING = {
         },
     }
 }
+
+CACHES = {
+    'default': {
+        #'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+        'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
+        'LOCATION': '%s/cache' % os.path.dirname(os.path.realpath(__file__)),
+        'TIMEOUT': 172800 if not DEBUG else 300,
+        'OPTIONS': {
+            'MAX_ENTRIES': 1000
+        }
+    }
+}
+
+# https://docs.djangoproject.com/en/dev/topics/i18n/translation/
+# look for (ctrl + f) 'lambda' and you'll find why the following is needed
+_ = lambda s: s
+
+NODESHOT = {
+    'SETTINGS': {
+        'ACL_GLOBAL_EDITABLE': True,
+        # the following is an example of possible granular ACL setting that is available
+        #'ACL_NODES_NODE_EDITABLE': False,
+        'CONTACT_INWARD_LOG': True,
+        'CONTACT_INWARD_MAXLENGTH': 2000,
+        'CONTACT_INWARD_REQUIRE_AUTH': False,
+        'CONTACT_OUTWARD_MAXLENGTH': 9999,
+        'CONTACT_OUTWARD_MINLENGTH': 50,
+        'CONTACT_OUTWARD_STEP': 20,
+        'CONTACT_OUTWARD_DELAY': 10,
+        'CONTACT_OUTWARD_HTML': True, # grappelli must be in INSTALLED_APPS, otherwise it won't work
+    },
+    'CHOICES': {
+        'AVAILABLE_CRONJOBS': (
+            ('00', _('midnight')),
+            ('04', _('04:00 AM')),
+        ),
+        'ACCESS_LEVELS': [
+            ('1', _('registered')),
+            ('2', _('community')),
+        ],
+        'APPLICATION_PROTOCOLS': (
+            ('http', 'http'),
+            ('https', 'https'),
+            ('ftp', 'FTP'),
+            ('smb', 'Samba'),
+            ('afp', 'Apple File Protocol'),
+            ('git', 'Git'),
+        )
+    },
+    # default values for the application or new database objects
+    'DEFAULTS': {
+        # default map zoom level when creating new zones
+        'MAP_ZOOM': 12,
+        'TIME_ZONE': 'GMT+1', # TODO: check if it can be determined by django
+        'NODE_STATUS': 0,
+        'NODE_AVATARS': True,
+        'ZONE_TIME': 'GMT+1',
+        'ZONE_ZOOM': 12,
+        'MAILING_SCHEDULE_OUTWARD': False,
+        'ACL_GLOBAL': 'public',
+        # default access_level value for app: services, model: Login
+        'ACL_SERVICES_LOGIN': '2',
+    },
+    'API': {
+        'APPS_ENABLED': [
+            'nodeshot.core.zones',
+            'nodeshot.core.nodes',
+            'nodeshot.core.network',
+            'nodeshot.core.links',
+            'nodeshot.core.services'
+        ]
+    }
+}
+
+NODESHOT['DEFAULTS']['CRONJOB'] = NODESHOT['CHOICES']['AVAILABLE_CRONJOBS'][0][0]
+
+# use the command 'python -m -smtpd -n -c DebuggingServer localhost:1025' if you want a dummy SMTP server that logs outgoing emails but doesn't actually send them
+#EMAIL_USE_TLS = True
+EMAIL_HOST = 'localhost'
+#EMAIL_HOST_USER = 'your@email.org'
+#EMAIL_HOST_PASSWORD = '***********'
+EMAIL_PORT = 1025 # 1025 if you are debugging
+DEFAULT_FROM_EMAIL = 'your@email.org'
+
+if 'grappelli' in INSTALLED_APPS:
+    GRAPPELLI_ADMIN_TITLE = 'Nodeshot Admin'

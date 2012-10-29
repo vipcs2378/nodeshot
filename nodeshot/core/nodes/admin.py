@@ -1,21 +1,29 @@
 from django.contrib import admin
-from nodeshot.core.nodes.models import Node, Zone
+from django.conf import settings
+from nodeshot.core.nodes.models import Node, Image
 from nodeshot.core.network.models import Device
-from nodeshot.core.base.admin import BaseAdmin, BaseStackedInline
+from nodeshot.core.base.admin import BaseAdmin, BaseStackedInline, BaseTabularInline
 
 class DeviceInline(BaseStackedInline):
     model = Device
+    
+    if 'grappelli' in settings.INSTALLED_APPS:
+        classes = ('grp-collapse grp-open', )
 
-class ZoneAdmin(BaseAdmin):
-    pass
+class ImageInline(BaseTabularInline):
+    model = Image
+    
+    if 'grappelli' in settings.INSTALLED_APPS:
+        sortable_field_name = 'order'
+        classes = ('grp-collapse grp-open', )
 
 class NodeAdmin(BaseAdmin):
-    list_display  = ('name', 'user', 'status', 'added', 'updated')
-    list_filter   = ('status', 'added')
+    list_display  = ('name', 'user', 'status', 'is_hotspot', 'added', 'updated')
+    list_filter   = ('status', 'is_hotspot', 'added')
+    search_fields = ('name',)
     date_hierarchy = 'added'
     ordering = ('-id',)
     prepopulated_fields = {'slug': ('name',)}
-    inlines = (DeviceInline,)
+    inlines = (DeviceInline, ImageInline)
 
-admin.site.register(Zone, ZoneAdmin)
 admin.site.register(Node, NodeAdmin)
