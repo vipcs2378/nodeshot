@@ -3,6 +3,7 @@
 .komodotools/
 projects/ninux/ninux/settings.py
 projects/ninux/ninux/settings_test.py
+projects/ninux/ninux/wsgi.py
 *.komodoproject
 *.DS_Store
 projects/ninux/ninux/media/*
