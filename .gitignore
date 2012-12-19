@@ -4,6 +4,7 @@
 projects/ninux/ninux/settings.py
 projects/ninux/ninux/settings_test.py
 projects/ninux/ninux/wsgi.py
+projects/ninux/build
 *.komodoproject
 *.DS_Store
 projects/ninux/ninux/media/*
