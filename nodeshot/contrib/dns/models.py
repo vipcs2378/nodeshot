@@ -4,54 +4,12 @@ from django.db import models
 from django.utils.translation import ugettext_lazy as _
 from django.contrib.contenttypes import generic
 from django.contrib.auth.models import User
+from nodeshot.contrib.dns.choices import ACCESS_LEVELS, DOMAIN_TYPE, RECORD_TYPE, USER_RECORD_TYPE
 from nodeshot.core.base.models import BaseDate
+from nodeshot.core.zones.models import Zone
+from nodeshot.core.nodes.models import Node
 from nodeshot.core.network.models import Device, Interface
 
-import hashlib
-
-ACCESS_LEVELS = (
-    ('owner', _('owner')),
-    ('manager', _('manager'))
-)
-
-DOMAIN_TYPE = (
-    'NATIVE',
-    'MASTER',
-    'SLAVE',
-    'SUPERSLAVE'
-)
-
-RECORD_TYPE = ( #Can be implemented into a table with USER_RECORD_TYPE  
-    'A',
-    'AAAA',
-    'AFSDB',
-    'CERT',
-    'CNAME',
-    'DNSKEY',
-    'DS',
-    'HINFO',
-    'KEY',
-    'LOC',
-    'MX',
-    'NAPTR',
-    'NS',
-    'NSEC',
-    'PTR',
-    'RP',
-    'RRSIG',
-    'SOA',
-    'SPF',
-    'SSHFP',
-    'SRV',
-    'TXT'
-)
-
-USER_RECORD_TYPE = (
-    'A',
-    'AAAA',
-    'CNAME',
-    'MX'
-)
 
 class Domain(BaseDate):
     """
@@ -100,8 +58,6 @@ class Record(BaseDate):
         super(Record, self).save(*args, **kwargs)
 
 
-
-
 class Supermaster(BaseDate):
     """
     Supermaster PowerDNS table (deprecated)
@@ -117,17 +73,21 @@ class Supermaster(BaseDate):
     def __unicode__(self):
         return self.nameserver
 
-"""
-OneToOne tables for customize automatic DNS names
-"""
+
 class ZoneToDns(models.Model):
-    zone                = models.OneToOneField('zones.Zone', db_index=True, unique=True)
+    """
+    Extension of zone model with zone domain name
+    """
+    zone                = models.OneToOneField(Zone, db_index=True, unique=True)
     value               = models.SlugField(_('value'), max_length=20)
 
     def __unicode__(self):
         return self.value
 
 class NodeToDns(models.Model):
+    """
+    Extension of node model with node domain name
+    """
     node                = models.OneToOneField(Node, db_index=True, unique=True)
     value               = models.SlugField(_('value'), max_length=20)
 
@@ -135,6 +95,9 @@ class NodeToDns(models.Model):
         return self.value
 
 class DeviceToDns(models.Model):
+    """
+    Extension of device model with device domain name
+    """
     device              = models.OneToOneField(Device, db_index=True, unique=True)
     value               = models.SlugField(_('value'), max_length=20)
 
@@ -142,6 +105,9 @@ class DeviceToDns(models.Model):
         return self.value
 
 class InterfaceToDns(models.Model):
+    """
+    Extension of interface model with interface domain name
+    """
     interface           = models.OneToOneField(Interface, db_index=True)
     value               = models.SlugField(_('value'), max_length=20)
 
@@ -150,7 +116,7 @@ class InterfaceToDns(models.Model):
 
 class DomainPolicy(BaseDate):
     """
-    Domains and Subdomains restrictions and policies for users
+    [Sub]Domains restrictions and policies for users
     """
     name                = models.CharField(max_length=255, db_index=True, unique=True)
     domain              = models.ForeignKey(Domain)
@@ -173,19 +139,4 @@ class DomainManager(BaseDate):
     class Meta:
         unique_together = ('user', 'domain')
 
-class UserRecord(Record):
-    """
-    User's Records table
-    """
-
-    user                 = models.ForeignKey(User)
-
-class DNSScriptCache(models.Model):
-    """
-    DNS Script Caching table
-        name is the domain without the extension
-        content is the IPv4/IPv6 Address
-    """
-    name                = models.CharField(_('name'), max_length=255)
-    content             = models.CharField(max_length=29)
 
