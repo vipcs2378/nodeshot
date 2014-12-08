@@ -84,9 +84,9 @@ $.getDataSync = function (url) {
     return data;
 }
 
-// https://gist.github.com/toekneestuck/1878713
 _.mixin({
-    nl2br : function(str, is_xhtml){
+    // https://gist.github.com/toekneestuck/1878713
+    nl2br: function(str, is_xhtml){
         var breakTag = (is_xhtml || typeof is_xhtml === 'undefined') ? '<br />' : '<br>';
         return (str + '').replace(/([^>\r\n]?)(\r\n|\n\r|\r|\n)/g, '$1' + breakTag + '$2');
     }
@@ -231,3 +231,30 @@ $.createModal = function (opts) {
         $('#tmp-modal').remove();
     })
 };
+
+/*
+ * mask an element so it can be closed easily
+ */
+$.mask = function (element, close) {
+    // both arguments required
+    if(!element || !close){
+        throw('missing required arguments');
+    }
+    // jQueryfy if necessary
+    if(!'jquery' in element){
+        element = $(element);
+    }
+    // determine mask id
+    var maskId = element.attr('id') + '-mask',
+    // determine zIndex of mask
+        zIndex = parseInt(element.css('z-index')) - 1;
+    // append element to body
+    $('body').append('<div class="mask" id="' + maskId + '"></div>');
+    // apply z-index
+    $('#' + maskId).css('z-index', zIndex)
+    // bind event to close
+    .one('click', function(){
+        close(arguments);
+        $(this).remove();
+    });
+}

@@ -9,10 +9,11 @@ from nodeshot.core.layers.serializers import LayerDetailSerializer
 from nodeshot.core.cms.serializers import MenuSerializer
 
 
+#TODO: rimouovere questa MERDA INUTILE
 @api_view(('GET',))
 def essential_data(request, format=None):
     """
-    Retrieve nodes (geojson), status, layers and menu in one request.
+    Retrieve menu and legend items request.
     """
     nodes = Node.objects.published().accessible_to(request.user)
     layers = Layer.objects.published()
@@ -20,8 +21,6 @@ def essential_data(request, format=None):
     menu = MenuItem.objects.published().filter(parent=None).accessible_to(request.user)
     context = { 'request': request }
     return Response({
-        'nodes': NodeGeoSerializer(nodes, many=True, context=context).data,
-        'layers': LayerDetailSerializer(layers, many=True, context=context).data,
         'status': StatusListSerializer(status, many=True, context=context).data,
         'menu': MenuSerializer(menu, many=True, context=context).data
     })

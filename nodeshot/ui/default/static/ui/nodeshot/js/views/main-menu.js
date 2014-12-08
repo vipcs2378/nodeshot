@@ -18,20 +18,13 @@ var MainMenuView = Backbone.Marionette.CollectionView.extend({
     emptyView: MainMenuEmptyView,
 
     initialize: function(){
-        this.initCollection()
+        //this.initCollection()
+        this.collection = new MenuItemCollection();
         // re-fetch collection when user logs in or out
         this.listenTo(Nodeshot.currentUser, 'loggedin', this.fetch);
         this.listenTo(Nodeshot.currentUser, 'loggedout', this.fetch);
+        this.fetch();
         this.render();
-    },
-
-    /*
-     * initalize collection if not already done
-     */
-    initCollection: function(){
-        if(this.collection === undefined){
-            this.collection = new MenuItemCollection(Nodeshot.data.menu);
-        }
     },
 
     /*

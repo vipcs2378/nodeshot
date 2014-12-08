@@ -12,7 +12,6 @@ def index(request):
     context = {
         'layers': layers,
         'layers_allowing_new_nodes': layers_allowing_new_nodes,
-        'TILESERVER_URL': ui_settings.TILESERVER_URL,
         'MAP_CENTER': ui_settings.MAP_CENTER,
         'MAP_ZOOM': ui_settings.MAP_ZOOM,
         # participation

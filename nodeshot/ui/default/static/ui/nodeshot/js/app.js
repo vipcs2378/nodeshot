@@ -28,8 +28,8 @@ Nodeshot.addInitializer(function () {
 
 // init pages
 Nodeshot.addInitializer(function () {
-    MapView.prototype.resetDataContainers();
-    MapView.prototype.loadMapData();
+    //MapView.prototype.resetDataContainers();
+    //MapView.prototype.loadMapData();
 
     Nodeshot.page = new Page();
 
@@ -106,7 +106,7 @@ var NodeshotController = {
     // map view
     getMap: function () {
         Nodeshot.body.empty();
-        Nodeshot.body.show(new MapView());
+        Nodeshot.body.show(new MapLayoutView());
         $('#nav-bar a[href="#/map"]').trigger('click').parent().addClass('active');
     },
 

@@ -1,3 +1,554 @@
+var MapLayoutView = Backbone.Marionette.LayoutView.extend({
+    name: 'MapLayoutView',
+    id: 'map-container',
+    template: '#map-layout-template',
+
+    regions: {
+        map: '#map-js',
+        legend: '#legend-js',
+        panels: '#map-panels',
+        toolbar: '#map-toolbar',
+        addNode: '#add-node-container'
+    },
+
+    onShow: function(){
+        this.map.show(new MapContentView());
+        this.toolbar.show(new MapToolbarView({}, this));
+        this.showPanels();
+        this.showLegend();
+    },
+    
+    showPanels: function(){
+        var layers = new LayerCollection(),
+            self = this;
+        layers.fetch().done(function(){
+            self.panels.show(new MapPanelsView({collection: layers}, self));
+        });
+    },
+    
+    showLegend: function(){
+        var legend = new LegendCollection(),
+            self = this;
+        legend.fetch().done(function(){
+            self.legend.show(new MapLegendView({collection: legend}, self));
+        });
+    }
+},{  // static methods
+    
+    /*
+     * Resize page elements so that the leaflet map
+     * takes most of the available space in the window
+     */
+    setMapDimensions: function () {
+        if (!$('#map-overlay-container').length) {
+            var height = $(window).height() - $('body > header').height();
+            $('#map-container, #map-toolbar').height(height);
+        } else {
+            var height = $('#map-overlay-container').height() + parseInt($('#map-overlay-container').css('top'));
+            $('#map-container').height(height);
+        }
+
+        var map_toolbar = $('#map-toolbar'),
+            add_node_container = $('#add-node-container');
+        width = $(window).width();
+
+        // take in consideration #add-node-container if visible
+        if (add_node_container.is(':visible')) {
+            width = width - add_node_container.outerWidth();
+        }
+        // take in consideration map toolbar if visible
+        else if (map_toolbar.is(':visible')) {
+            width = width - map_toolbar.outerWidth();
+        }
+        $('#map').width(width);
+
+        var map = Nodeshot.body.currentView.map.currentView.map;
+        if (map && map.invalidateSize) {
+            map.invalidateSize();
+        }
+    }
+})
+
+var MapContentView = Backbone.Marionette.ItemView.extend({
+    name: "MapContentView",
+    template: false,
+
+    initialize: function(){
+        // bind to namespaced events
+        $(window).on("beforeunload.map", _.bind(this.beforeunload, this));
+        $(window).on("resize.map", _.bind(this.resize, this));
+        //this.resetDataContainers();
+        Nodeshot.onNodeClose = '#/map';
+    },
+
+    onShow: function(){
+        this.initMap();
+    },
+
+    onDestroy: function (e) {
+        // store current coordinates when changing view
+        this.storeCoordinates();
+        // unbind the namespaced events
+        $(window).off("beforeunload.map");
+        $(window).off("resize.map");
+    },
+
+    beforeunload: function () {
+        // store current coordinates before leaving the page
+        this.storeCoordinates();
+    },
+
+    /*
+     * get current map coordinates (lat, lng, zoom)
+     */
+    getCoordinates: function () {
+        return {
+            lat: this.map.getCenter().lat,
+            lng: this.map.getCenter().lng,
+            zoom: this.map.getZoom()
+        }
+    },
+
+    /*
+     * store current map coordinates in localStorage
+     */
+    storeCoordinates: function () {
+        var coords = this.getCoordinates()
+        Nodeshot.preferences.mapLat = coords.lat;
+        Nodeshot.preferences.mapLng = coords.lng;
+        Nodeshot.preferences.mapZoom = coords.zoom;
+    },
+
+    /*
+     * get latest stored coordinates or default ones
+     */
+    rememberCoordinates: function () {
+        return {
+            lat: Nodeshot.preferences.mapLat || Nodeshot.MAP_CENTER[0],
+            lng: Nodeshot.preferences.mapLng || Nodeshot.MAP_CENTER[1],
+            zoom: Nodeshot.preferences.mapZoom || Nodeshot.MAP_ZOOM
+        }
+    },
+
+    resize: function () {
+        MapLayoutView.setMapDimensions();
+        // when narrowing the window to medium-small size
+        if($(window).width() <= 767){
+            // if any side-panel remains open
+            var panels = $('.side-panel:visible');
+            if(panels.length){
+                // trigger click on header to close it
+                $('body>header').trigger('click');
+            }
+        }
+    },
+
+    /*
+     * Initialize Map
+     */
+    initMap: function() {
+        var preferences = Nodeshot.preferences;
+        // unload map if already initialized
+        if (typeof (this.map) !== 'undefined') {
+            // store current coordinates
+            this.storeCoordinates();
+            // unload map
+            this.map.remove();
+            // clear any HTML in map container
+            $('#map-js').html('');
+        }
+
+        MapLayoutView.setMapDimensions();
+
+        // init map
+        this.map = this.loadDjangoLeafletMap();
+        //// remember latest coordinates
+        var coords = this.rememberCoordinates();
+        this.map.setView([coords.lat, coords.lng], coords.zoom, {
+            trackResize: true
+        });
+
+        // load data
+        //this.loadMapData();
+        //this.clusterizeMarkers();
+        //this.rememberVisibleStatuses();
+    },
+
+    /*
+     * Overridden by custom django-leaflet template in
+     * {UI}/templates/leaflet/_lefalet_map.html
+     */
+    loadDjangoLeafletMap: function(){}
+})
+
+var MapLegendView = Backbone.Marionette.ItemView.extend({
+    name: 'MapLegendView',
+    template: '#map-legend-template',
+    id: 'map-legend',
+    className: 'overlay inverse',
+
+    ui: {
+        'close': 'a.icon-close'
+    },
+
+    events: {
+        'click @ui.close': 'toggleLegend',
+        'click li a': 'toggleLegendControl'
+    },
+    
+    initialize: function(collection, parent){
+        this.parent = parent;
+        this.legendButton = parent.toolbar.currentView.ui.legendButton;
+    },
+    
+    onRender: function(){
+        preferences = Nodeshot.preferences;
+        if (preferences.legendOpen === false || preferences.legendOpen === 'false') {
+            this.$el.hide();
+        } else {
+            this.legendButton.addClass('disabled');
+        }
+    },
+    
+    /*
+     * open or close legend
+     */
+    toggleLegend: function (e) {
+        e.preventDefault();
+
+        var legend = this.$el,
+            button = this.legendButton;
+
+        if (legend.is(':visible')) {
+            legend.fadeOut(255);
+            button.removeClass('disabled');
+            button.tooltip('enable');
+            Nodeshot.preferences.legendOpen = false;
+        } else {
+            legend.fadeIn(255);
+            button.addClass('disabled');
+            button.tooltip('disable').tooltip('hide');
+            Nodeshot.preferences.legendOpen = true;
+        }
+    },
+
+    /*
+     * enable or disable something on the map
+     * by clicking on its related legend control
+     */
+    toggleLegendControl: function (e) {
+        e.preventDefault();
+
+        var a = $(e.currentTarget),
+            li = a.parent(),
+            status = a.attr('data-status');
+
+        if (li.hasClass('disabled')) {
+            li.removeClass('disabled');
+            // TODO
+            //this.toggleMarkers('show', status);
+        } else {
+            li.addClass('disabled');
+            // TODO
+            //this.toggleMarkers('hide', status);
+        }
+    }
+});
+
+var MapToolbarView = Backbone.Marionette.ItemView.extend({
+    name: 'MapToolbarView',
+    template: '#map-toolbar-template',
+
+    ui: {
+        'buttons': 'a',
+        'switchMapMode': '#btn-map-mode',
+        'legendButton': '#btn-legend',
+        'toolsButton': 'a.icon-tools',
+        'prefButton': 'a.icon-config',
+        'layersControl': 'a.icon-layer-2'
+    },
+
+    events: {
+        'click #map-toolbar .icon-pin-add': 'addNode',
+        'click #map-toolbar .icon-search': 'removeAddressFoundMarker',
+        'click @ui.buttons': 'togglePanel',
+        'click @ui.switchMapMode': 'switchMapMode',
+        'switch-change #fn-map-layers .toggle-layer-data': 'toggleLayerData',
+        // siblings events
+        'click @ui.legendButton': 'toggleLegend'
+    },
+    
+    initialize: function(model, parent){
+        this.parent = parent;
+    },
+    
+    onRender: function(){
+        var self = this;
+        // init tooltip
+        this.ui.buttons.tooltip();
+        
+        // correction for map tools
+        this.ui.toolsButton.click(function (e) {
+            var button = $(this),
+                prefButton = self.ui.prefButton;
+            if (button.hasClass('active')) {
+                prefButton.tooltip('disable');
+            } else {
+                prefButton.tooltip('enable');
+            }
+        });
+        
+        // correction for map-filter
+        this.ui.layersControl.click(function (e) {
+            var button = $(this),
+                otherButtons = self.$el.find('a.icon-config, a.icon-3d, a.icon-tools');
+            if (button.hasClass('active')) {
+                otherButtons.tooltip('disable');
+            } else {
+                otherButtons.tooltip('enable');
+            }
+        });
+    },
+    
+    /*
+     * show / hide map toolbar on narrow screens
+     */
+    toggleToolbar: function (e) {
+        e.preventDefault();
+        // shortcut
+        var toolbar = this.parent.toolbar.$el,
+            target = $(e.currentTarget);
+        // show toolbar
+        if(toolbar.is(':hidden')){
+            // just add display:block
+            // which overrides css media-query
+            toolbar.show();
+            // overimpose on toolbar
+            target.css('right', '-60px');
+        }
+        // hide toolbar
+        else{
+            // instead of using jQuery.hide() which would hide the toolbar also
+            // if the user enlarged the screen, we clear the style attribute
+            // which will cause the toolbar to be hidden only on narrow screens
+            toolbar.attr('style', '');
+            // close any open panel
+            if($('.side-panel:visible').length){
+                $('.mask').trigger('click');
+            }
+            // eliminate negative margin correction
+            target.css('right', '0');
+        }
+        MapLayoutView.setMapDimensions();
+    },
+    
+    /*
+     * redirects to MapPanelsView
+     */
+    toggleLegend: function(e){
+        this.parent.legend.currentView.toggleLegend(e);
+    },
+    
+    /*
+     * redirects to MapPanelsView
+     */
+    togglePanel: function (e) {
+        this.parent.panels.currentView.togglePanel(e);
+    },
+    
+    /*
+     * toggle 3D or 2D map
+     */
+    switchMapMode: function (e) {
+        e.preventDefault();
+        $.createModal({message:'not implemented yet'});
+    },
+    
+    // TODO
+    addNode: function(){},
+    // TODO
+    removeAddressFoundMarker: function(){}
+});
+
+var MapPanelsView = Backbone.Marionette.ItemView.extend({
+    name: 'MapPanelsView',
+    template: '#map-panels-template',
+
+    ui: {
+        'switches': 'input.switch',
+        'scrollers': '.scroller',
+        'selects': '.selectpicker',
+        'tools': '.tool'
+    },
+
+    events: {
+        'submit #fn-search-address form': 'searchAddress',
+        'click #fn-map-tools .tool': 'toggleTool',
+        'click #toggle-toolbar': 'toggleToolbar',
+        'switch-change #fn-map-layers .toggle-layer-data': 'toggleLayerData'
+    },
+    
+    initialize: function(model, parent){
+        this.parent = parent;
+        this.mapView = parent.map.currentView;
+        this.toolbarView = parent.toolbar.currentView;
+        this.toolbarButtons = this.toolbarView.ui.buttons;
+    },
+    
+    onRender: function(){
+        this.ui.tools.tooltip()
+        // activate switch
+        this.ui.switches.bootstrapSwitch();
+        this.ui.switches.bootstrapSwitch('setSizeClass', 'switch-small');
+        // activate scroller
+        this.ui.scrollers.scroller({
+            trackMargin: 6
+        });
+        // fancy selects
+        this.ui.selects.selectpicker({
+            style: 'btn-special'
+        });
+    },
+    
+    /*
+     * show / hide toolbar panels
+     */
+    togglePanel: function (e) {
+        e.preventDefault();
+
+        var button = $(e.currentTarget),
+            panelId = button.attr('data-panel'),
+            panel = $('#' + panelId),
+            self = this;
+
+        // if no panel return here
+        if (!panel.length) {
+            return;
+        }
+
+        // hide any open tooltip
+        $('#map-toolbar .tooltip').hide();
+
+        // determine distance from top
+        var distanceFromTop = button.offset().top - $('body > header').eq(0).outerHeight();
+        panel.css('top', distanceFromTop);
+
+        // adjust height of panel if marked as 'adjust-height'
+        if (panel.hasClass('adjust-height')) {
+            var preferencesHeight = $('#map-toolbar').height() - distanceFromTop - 18;
+            panel.height(preferencesHeight);
+        }
+
+        panel.fadeIn(25, function(){
+            panel.find('.scroller').scroller('reset');
+            button.addClass('active');
+            button.tooltip('hide').tooltip('disable');
+            // create a mask for easy closing
+            $.mask(panel, function(e){
+                // close function
+                if(panel.is(':visible')){
+                    panel.hide();
+                    self.toolbarButtons.removeClass('active');
+                    button.tooltip('enable');
+                    // if clicking again on the same button avoid reopening the panel
+                    if($(e.target).attr('data-panel') == panelId){
+                        e.stopPropagation();
+                        e.preventDefault();
+                    }
+                }
+            });
+        });
+    },
+    
+    /*
+     * toggle map tool
+     */
+    toggleTool: function (e) {
+        e.preventDefault();
+        var button = $(e.currentTarget),
+            active_buttons = $('#fn-map-tools .tool.active');
+        // if activating a tool
+        if (!button.hasClass('active')) {
+            // deactivate any other
+            active_buttons.removeClass('active');
+            active_buttons.tooltip('enable');
+            button.addClass('active');
+            button.tooltip('hide');
+            button.tooltip('disable');
+        // deactivate
+        } else {
+            button.removeClass('active');
+            button.tooltip('enable');
+        }
+    },
+    
+    /*
+     * proxy to MapToolbarView.toggleToolbar
+     */
+    toggleToolbar: function (e) {
+        this.toolbarView.toggleToolbar(e);
+    },
+    
+    /*
+     * search for an address
+     * put a marker on the map and zoom in
+     */
+    searchAddress: function (e) {
+        e.preventDefault();
+        this.removeAddressMarker();
+        var self = this,
+            searchString = $("#fn-search-address input").val(),
+            url = "//nominatim.openstreetmap.org/search?format=json&q=" + searchString;
+        $.ajax({
+            url: url,
+            dataType: 'json',
+            success: function (response) {
+                // not found
+                if (_.isEmpty(response)) {
+                    $.createModal({ message: 'Address not found' });
+                }
+                // found
+                else {
+                    // only the first result returned from OSM is displayed on map
+                    var firstPlaceFound = (response[0]),
+                        lat = parseFloat(firstPlaceFound.lat),
+                        lng = parseFloat(firstPlaceFound.lon),
+                        latlng = L.latLng(lat, lng),
+                        map = self.mapView.map;
+                    // put marker on the map
+                    self.addressMarker = L.marker(latlng)
+                    self.addressMarker.addTo(map);
+                    // go to marker and zoom in
+                    map.setView(latlng, 17);
+                    // bind for removal
+                    $('#fn-search-address-mask').one('click', function(){
+                        self.removeAddressMarker(1500);  // add a fadeOut
+                    });
+                }
+            }
+        });
+    },
+    
+    /*
+     * remove the marker added in searchAddress
+     */
+    removeAddressMarker: function (speed) {
+        // remove istantly by default
+        speed = speed || 0;
+        var marker = this.addressMarker,
+            self = this;
+        if (typeof(marker) != "undefined") {
+            $([marker._icon, marker._shadow]).fadeOut(speed, function(){
+                self.mapView.map.removeLayer(marker);
+                delete(self.addressMarker);
+            });
+        }
+    },
+    
+    // TODO
+    toggleLayerData: function(){}
+});
+
 var MapView = Backbone.Marionette.ItemView.extend({
     name: 'MapView',
     id: 'map-container',
@@ -20,12 +571,12 @@ var MapView = Backbone.Marionette.ItemView.extend({
         'click #map-toolbar .icon-pin-add': 'addNode',
         'click #map-toolbar .icon-search': 'removeAddressFoundMarker',
         'submit #fn-search-address form': 'searchAddress',
-        'click @ui.toolbarButtons': 'togglePanel',
-        'click @ui.legendTogglers': 'toggleLegend',
-        'click #map-legend li a': 'toggleLegendControl',
-        'click #fn-map-tools .tool': 'toggleTool',
-        'click #toggle-toolbar': 'toggleToolbar',
-        'click @ui.switchMapMode': 'switchMapMode',
+        //'click @ui.toolbarButtons': 'togglePanel',
+        //'click @ui.legendTogglers': 'toggleLegend',
+        //'click #map-legend li a': 'toggleLegendControl',
+        //'click #fn-map-tools .tool': 'toggleTool',
+        //'click #toggle-toolbar': 'toggleToolbar',
+        //'click @ui.switchMapMode': 'switchMapMode',
         'click #add-node-form .btn-default': 'closeAddNode',
         'submit #add-node-form': 'submitAddNode',
         'switch-change #fn-map-layers .toggle-layer-data': 'toggleLayerData'
@@ -33,8 +584,8 @@ var MapView = Backbone.Marionette.ItemView.extend({
 
     initialize: function () {
         // bind to namespaced events
-        $(window).on("beforeunload.map", _.bind(this.beforeunload, this));
-        $(window).on("resize.map", _.bind(this.resize, this));
+        //$(window).on("beforeunload.map", _.bind(this.beforeunload, this));
+        //$(window).on("resize.map", _.bind(this.resize, this));
 
         this.resetDataContainers();
         Nodeshot.onNodeClose = '#/map';
@@ -92,51 +643,51 @@ var MapView = Backbone.Marionette.ItemView.extend({
         }
     },
 
-    onDestroy: function (e) {
-        // show breadcrumb on mobile
-        $('#breadcrumb').addClass('visible-xs').show();
-
-        // store current coordinates when changing view
-        this.storeCoordinates();
-
-        // unbind the namespaced events
-        $(window).off("beforeunload.map");
-        $(window).off("resize.map");
-    },
+    //onDestroy: function (e) {
+    //    // show breadcrumb on mobile
+    //    $('#breadcrumb').addClass('visible-xs').show();
+    //
+    //    // store current coordinates when changing view
+    //    this.storeCoordinates();
+    //
+    //    // unbind the namespaced events
+    //    $(window).off("beforeunload.map");
+    //    $(window).off("resize.map");
+    //},
 
     /* --- Nodeshot methods --- */
 
     /*
      * set width and height of map
      */
-    setMapDimensions: function () {
-        if (!$('#map-overlay-container').length) {
-            var height = $(window).height() - $('body > header').height();
-            $('#map-container, #map-toolbar').height(height);
-        } else {
-            var height = $('#map-overlay-container').height() + parseInt($('#map-overlay-container').css('top'));
-            $('#map-container').height(height);
-        }
-
-        var map_toolbar = $('#map-toolbar'),
-            add_node_container = $('#add-node-container');
-        width = $(window).width();
-
-        // take in consideration #add-node-container if visible
-        if (add_node_container.is(':visible')) {
-            width = width - add_node_container.outerWidth();
-        }
-        // take in consideration map toolbar if visible
-        else if (map_toolbar.is(':visible')) {
-            width = width - map_toolbar.outerWidth();
-        }
-        $('#map').width(width);
-
-        var map = Nodeshot.body.currentView.map;
-        if (map && map.invalidateSize) {
-            map.invalidateSize();
-        }
-    },
+    //setMapDimensions: function () {
+    //    if (!$('#map-overlay-container').length) {
+    //        var height = $(window).height() - $('body > header').height();
+    //        $('#map-container, #map-toolbar').height(height);
+    //    } else {
+    //        var height = $('#map-overlay-container').height() + parseInt($('#map-overlay-container').css('top'));
+    //        $('#map-container').height(height);
+    //    }
+    //
+    //    var map_toolbar = $('#map-toolbar'),
+    //        add_node_container = $('#add-node-container');
+    //    width = $(window).width();
+    //
+    //    // take in consideration #add-node-container if visible
+    //    if (add_node_container.is(':visible')) {
+    //        width = width - add_node_container.outerWidth();
+    //    }
+    //    // take in consideration map toolbar if visible
+    //    else if (map_toolbar.is(':visible')) {
+    //        width = width - map_toolbar.outerWidth();
+    //    }
+    //    $('#map').width(width);
+    //
+    //    var map = Nodeshot.body.currentView.map;
+    //    if (map && map.invalidateSize) {
+    //        map.invalidateSize();
+    //    }
+    //},
 
     // reset containers with pointers to markers and other map objects
     resetDataContainers: function () {
@@ -148,56 +699,56 @@ var MapView = Backbone.Marionette.ItemView.extend({
         });
     },
 
-    resize: function () {
-        this.setMapDimensions();
-
-        // when narrowing the window to medium-small size
-        if($(window).width() <= 767){
-            // if any side-panel remains open
-            var panels = $('.side-panel:visible');
-            if(panels.length){
-                // trigger click on header to close it
-                $('body>header').trigger('click');
-            }
-        }
-    },
-
-    beforeunload: function () {
-        // store current coordinates before leaving the page
-        this.storeCoordinates();
-    },
-
-    /*
-     * get current map coordinates (lat, lng, zoom)
-     */
-    getCoordinates: function () {
-        return {
-            lat: this.map.getCenter().lat,
-            lng: this.map.getCenter().lng,
-            zoom: this.map.getZoom()
-        }
-    },
-
-    /*
-     * store current map coordinates in localStorage
-     */
-    storeCoordinates: function () {
-        var coords = this.getCoordinates()
-        Nodeshot.preferences.mapLat = coords.lat;
-        Nodeshot.preferences.mapLng = coords.lng;
-        Nodeshot.preferences.mapZoom = coords.zoom;
-    },
-
-    /*
-     * get latest stored coordinates or default ones
-     */
-    rememberCoordinates: function () {
-        return {
-            lat: Nodeshot.preferences.mapLat || Nodeshot.MAP_CENTER[0],
-            lng: Nodeshot.preferences.mapLng || Nodeshot.MAP_CENTER[1],
-            zoom: Nodeshot.preferences.mapZoom || Nodeshot.MAP_ZOOM
-        }
-    },
+    //resize: function () {
+    //    MapLayoutView.setMapDimensions();
+    //
+    //    // when narrowing the window to medium-small size
+    //    if($(window).width() <= 767){
+    //        // if any side-panel remains open
+    //        var panels = $('.side-panel:visible');
+    //        if(panels.length){
+    //            // trigger click on header to close it
+    //            $('body>header').trigger('click');
+    //        }
+    //    }
+    //},
+    //
+    //beforeunload: function () {
+    //    // store current coordinates before leaving the page
+    //    this.storeCoordinates();
+    //},
+    //
+    ///*
+    // * get current map coordinates (lat, lng, zoom)
+    // */
+    //getCoordinates: function () {
+    //    return {
+    //        lat: this.map.getCenter().lat,
+    //        lng: this.map.getCenter().lng,
+    //        zoom: this.map.getZoom()
+    //    }
+    //},
+    //
+    ///*
+    // * store current map coordinates in localStorage
+    // */
+    //storeCoordinates: function () {
+    //    var coords = this.getCoordinates()
+    //    Nodeshot.preferences.mapLat = coords.lat;
+    //    Nodeshot.preferences.mapLng = coords.lng;
+    //    Nodeshot.preferences.mapZoom = coords.zoom;
+    //},
+    //
+    ///*
+    // * get latest stored coordinates or default ones
+    // */
+    //rememberCoordinates: function () {
+    //    return {
+    //        lat: Nodeshot.preferences.mapLat || Nodeshot.MAP_CENTER[0],
+    //        lng: Nodeshot.preferences.mapLng || Nodeshot.MAP_CENTER[1],
+    //        zoom: Nodeshot.preferences.mapZoom || Nodeshot.MAP_ZOOM
+    //    }
+    //},
 
     /*
      * add node procedure
@@ -220,7 +771,7 @@ var MapView = Backbone.Marionette.ItemView.extend({
 
         // hide toolbar and enlarge map
         this.ui.toolbar.hide();
-        this.setMapDimensions();
+        MapLayoutView.setMapDimensions();
         this.toggleMarkersOpacity('fade');
 
         // show step1
@@ -397,7 +948,7 @@ var MapView = Backbone.Marionette.ItemView.extend({
 
         // show toolbar and adapt map width
         this.ui.toolbar.show();
-        this.setMapDimensions();
+        MapLayoutView.setMapDimensions();
         this.toggleMarkersOpacity();
 
         // hide step1 if necessary
@@ -415,7 +966,7 @@ var MapView = Backbone.Marionette.ItemView.extend({
             this.map.removeLayer(marker);
         }
 
-        this.setMapDimensions();
+        MapLayoutView.setMapDimensions();
     },
 
     /*
@@ -436,97 +987,6 @@ var MapView = Backbone.Marionette.ItemView.extend({
             } else {
                 node.setStyle(node.defaultOptions);
             }
-        }
-    },
-
-    /*
-     * show / hide toolbar panels
-     */
-    togglePanel: function (e) {
-        e.preventDefault();
-
-        var button = $(e.currentTarget),
-            panel_id = button.attr('data-panel'),
-            panel = $('#' + panel_id),
-            self = this;
-
-        // if no panel return here
-        if (!panel.length) {
-            return;
-        }
-
-        // hide any open tooltip
-        $('#map-toolbar .tooltip').hide();
-
-        var distance_from_top = button.offset().top - $('body > header').eq(0).outerHeight();
-        panel.css('top', distance_from_top);
-
-        // here we should use an event
-        if (panel.hasClass('adjust-height')) {
-            var preferences_height = this.$el.height() - distance_from_top - 18;
-            panel.height(preferences_height);
-        }
-
-        panel.fadeIn(25, function(){
-            panel.find('.scroller').scroller('reset');
-            button.addClass('active');
-            button.tooltip('disable');
-
-            // clicking anywhere else closes the panel
-            $('#map-toolbar, body > header, #map > div:not(.side-panel)').one('click', function(e){
-                if(panel.is(':visible')){
-                    panel.hide();
-                    self.ui.toolbarButtons.removeClass('active');
-                    button.tooltip('enable');
-                    // if clicking again on the same button avoid reopening the panel
-                    if($(e.target).attr('data-panel') == panel_id){
-                        e.stopPropagation();
-                        e.preventDefault();
-                    }
-                }
-            });
-        });
-    },
-
-    /*
-     * open or close legend
-     */
-    toggleLegend: function (e) {
-        e.preventDefault();
-
-        var legend = this.ui.legend,
-            button = this.ui.legendButton;
-
-        if (legend.is(':visible')) {
-            legend.fadeOut(255);
-            button.removeClass('disabled');
-            button.tooltip('enable');
-            Nodeshot.preferences.legendOpen = false;
-        } else {
-            legend.fadeIn(255);
-            button.addClass('disabled');
-            button.tooltip('disable').tooltip('hide');
-            Nodeshot.preferences.legendOpen = true;
-        }
-    },
-
-    /*
-     * enable or disable something on the map
-     * by clicking on its related legend control
-     */
-    toggleLegendControl: function (e) {
-        e.preventDefault();
-
-        var a = $(e.currentTarget),
-            li = a.parent(),
-            status = a.attr('data-status');
-
-        if (li.hasClass('disabled')) {
-            li.removeClass('disabled');
-            this.toggleMarkers('show', status);
-        } else {
-            li.addClass('disabled');
-            this.toggleMarkers('hide', status);
         }
     },
 
@@ -570,44 +1030,6 @@ var MapView = Backbone.Marionette.ItemView.extend({
     },
 
     /*
-     * toggle map tool
-     */
-    toggleTool: function (e) {
-        e.preventDefault();
-        var button = $(e.currentTarget),
-            active_buttons = $('#fn-map-tools .tool.active');
-
-        if (!button.hasClass('active')) {
-            // deactivate any other
-            active_buttons.removeClass('active');
-            active_buttons.tooltip('enable');
-
-            button.addClass('active');
-            button.tooltip('hide');
-            button.tooltip('disable');
-        } else {
-            button.removeClass('active');
-            button.tooltip('enable');
-        }
-    },
-
-    /*
-     * show / hide map toolbar on mobiles
-     */
-    toggleToolbar: function (e) {
-        e.preventDefault();
-        this.ui.toolbar.toggle();
-        // if toolbar has just been hidden
-        if(this.ui.toolbar.is(':hidden')){
-            // close any open panel
-            if($('.side-panel:visible').length){
-                $('body>header').trigger('click');
-            }
-        }
-        this.setMapDimensions();
-    },
-
-    /*
      * Initialize Map
      */
     initMap: function (mode) {
@@ -626,7 +1048,7 @@ var MapView = Backbone.Marionette.ItemView.extend({
             $('#map-js').html('');
         }
 
-        this.setMapDimensions();
+        MapLayoutView.setMapDimensions();
 
         // init map
         this.map = this.loadDjangoLeafletMap();
@@ -652,7 +1074,7 @@ var MapView = Backbone.Marionette.ItemView.extend({
      * Overridden by custom django-leaflet template in
      * {UI}/templates/leaflet/_lefalet_map.html
      */
-    loadDjangoLeafletMap: function(){},
+    //loadDjangoLeafletMap: function(){},
 
     /*
      * Loads Map Content
@@ -785,14 +1207,6 @@ var MapView = Backbone.Marionette.ItemView.extend({
         }
     },
 
-    /*
-     * toggle 3D or 2D map
-     */
-    switchMapMode: function (e) {
-        e.preventDefault();
-        $.createModal({message:'not implemented yet'});
-    },
-
     showVisibleMarkers: function (cluster, markers) {
         for (var i = 0, len = markers.length; i < len; i++) {
             var marker = markers[i];
@@ -867,38 +1281,38 @@ var MapView = Backbone.Marionette.ItemView.extend({
         });
     },
 
-    searchAddress: function (e) {
-        e.preventDefault();
-        this.removeAddressFoundMarker()
-        var self = this
-        var searchString = $("#fn-search-address input").val()
-        var url = "//nominatim.openstreetmap.org/search?format=json&q=" + searchString
-        $.ajax({
-            url: url,
-            dataType: 'json',
-            success: function (response) {
-                if (_.isEmpty(response)) {
-                    $.createModal({
-                        message: 'Address not found'
-                    });
-                } else {
-                    var firstPlaceFound = (response[0]); // first place returned from OSM is displayed on map
-                    var lat = parseFloat(firstPlaceFound.lat);
-                    var lng = parseFloat(firstPlaceFound.lon);
-                    var latlng = L.latLng(lat, lng);
-                    self.addressFoundMarker = L.marker(latlng)
-                    self.addressFoundMarker.addTo(self.map);
-                    self.map.setView(latlng, 16);
-                }
-            }
-        });
-    },
-
-    removeAddressFoundMarker: function () {
-        if (typeof (this.addressFoundMarker) != "undefined") {
-            this.map.removeLayer(this.addressFoundMarker)
-        }
-    },
+    //searchAddress: function (e) {
+    //    e.preventDefault();
+    //    this.removeAddressFoundMarker()
+    //    var self = this
+    //    var searchString = $("#fn-search-address input").val()
+    //    var url = "//nominatim.openstreetmap.org/search?format=json&q=" + searchString
+    //    $.ajax({
+    //        url: url,
+    //        dataType: 'json',
+    //        success: function (response) {
+    //            if (_.isEmpty(response)) {
+    //                $.createModal({
+    //                    message: 'Address not found'
+    //                });
+    //            } else {
+    //                var firstPlaceFound = (response[0]); // first place returned from OSM is displayed on map
+    //                var lat = parseFloat(firstPlaceFound.lat);
+    //                var lng = parseFloat(firstPlaceFound.lon);
+    //                var latlng = L.latLng(lat, lng);
+    //                self.addressFoundMarker = L.marker(latlng)
+    //                self.addressFoundMarker.addTo(self.map);
+    //                self.map.setView(latlng, 16);
+    //            }
+    //        }
+    //    });
+    //},
+    //
+    //removeAddressFoundMarker: function () {
+    //    if (typeof (this.addressFoundMarker) != "undefined") {
+    //        this.map.removeLayer(this.addressFoundMarker)
+    //    }
+    //},
 
     /*
      * remember hide/show nodes based on status choices

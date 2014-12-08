@@ -1,3 +1,27 @@
+var GeoModel = Backbone.Model.extend({
+    // parse GeoJSON
+    //parse: function(response) {
+    //    var geojson = response.features;
+    //    for(var key in geojson){}
+    //}
+})
+
+var LegendModel = Backbone.Model.extend({
+    defaults: {
+        "stats": ""
+    }
+});
+
+var LegendCollection = Backbone.Collection.extend({
+    url: '/api/v1/status/',
+    model: LegendModel
+});
+
+var LayerCollection = Backbone.Collection.extend({
+    url: '/api/v1/layers/',
+    model: Backbone.Model
+});
+
 var Page = Backbone.Model.extend({
     urlRoot: '/api/v1/pages/',
     idAttribute: 'slug',

@@ -1,13 +1,12 @@
 var NodeRowView = Backbone.Marionette.ItemView.extend({
-  tagName: "tr",
-  template: "#node-list-row-template"
+    tagName: "tr",
+    template: "#node-list-row-template"
 });
 
 var NodeEmptyView = Backbone.Marionette.ItemView.extend({
     tagName: "tr",
     template: "#node-list-empty-template"
 });
-
 
 var NodeListView = Backbone.Marionette.CompositeView.extend({
     name: 'NodeListView',
