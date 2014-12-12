@@ -1,5 +1,4 @@
 var MapLayoutView = Backbone.Marionette.LayoutView.extend({
-    name: 'MapLayoutView',
     id: 'map-container',
     template: '#map-layout-template',
 
@@ -12,45 +11,62 @@ var MapLayoutView = Backbone.Marionette.LayoutView.extend({
     },
 
     onShow: function(){
-        this.map.show(new MapContentView());
+        this.map.show(new MapContentView({}, this));
         this.toolbar.show(new MapToolbarView({}, this));
         this.showPanels();
         this.showLegend();
     },
-    
+
     showPanels: function(){
         var layers = new LayerCollection(),
             self = this;
         layers.fetch().done(function(){
             self.panels.show(new MapPanelsView({collection: layers}, self));
+            Nodeshot.layers = layers;
+            self.trigger('map.layersReady', layers);
         });
     },
-    
+
     showLegend: function(){
         var legend = new LegendCollection(),
             self = this;
         legend.fetch().done(function(){
             self.legend.show(new MapLegendView({collection: legend}, self));
+            Nodeshot.legend = legend;
+            self.trigger('map.legendReady', legend);
         });
+    },
+
+    /*
+     * resets to view initial state
+     */
+    reset: function(){
+        this.map.currentView.closeLeafletPopup();
     }
-},{  // static methods
-    
+
+}, {  // static methods
+
     /*
      * Resize page elements so that the leaflet map
      * takes most of the available space in the window
      */
     setMapDimensions: function () {
-        if (!$('#map-overlay-container').length) {
-            var height = $(window).height() - $('body > header').height();
-            $('#map-container, #map-toolbar').height(height);
-        } else {
-            var height = $('#map-overlay-container').height() + parseInt($('#map-overlay-container').css('top'));
-            $('#map-container').height(height);
+        var overlayContainer = $('#map-overlay-container');
+        // map
+        if (!overlayContainer.length) {
+            var height = $(window).height() - $('body > header').height(),
+                selector = '#map-container, #map-toolbar';
         }
+        // node details
+        else {
+            var height = overlayContainer.height() + parseInt(overlayContainer.css('top')),
+                selector = '#map-container';
+        }
+        $(selector).height(height);
 
         var map_toolbar = $('#map-toolbar'),
-            add_node_container = $('#add-node-container');
-        width = $(window).width();
+            add_node_container = $('#add-node-container'),
+            width = $(window).width();
 
         // take in consideration #add-node-container if visible
         if (add_node_container.is(':visible')) {
@@ -60,6 +76,7 @@ var MapLayoutView = Backbone.Marionette.LayoutView.extend({
         else if (map_toolbar.is(':visible')) {
             width = width - map_toolbar.outerWidth();
         }
+        // set width
         $('#map').width(width);
 
         var map = Nodeshot.body.currentView.map.currentView.map;
@@ -67,18 +84,29 @@ var MapLayoutView = Backbone.Marionette.LayoutView.extend({
             map.invalidateSize();
         }
     }
-})
+});
 
 var MapContentView = Backbone.Marionette.ItemView.extend({
-    name: "MapContentView",
     template: false,
 
-    initialize: function(){
+    initialize: function(model, parent){
+        this.parent = parent;
+        this.leafletGroups = [];  // this will be filled in loadMapData
         // bind to namespaced events
         $(window).on("beforeunload.map", _.bind(this.beforeunload, this));
         $(window).on("resize.map", _.bind(this.resize, this));
+
+        this.collection = new GeoCollection();
+        // populate map as geojson is fetched from server
+        this.listenTo(this.collection, 'sync', this.addGeoJsonToMap, this);
+
+        // load GeoJSON data when layers and legend are ready
+        var loadMapData = _.after(2, this.loadMapData);
+        this.listenToOnce(parent, 'map.layersReady', loadMapData);
+        this.listenToOnce(parent, 'map.legendReady', loadMapData);
+
         //this.resetDataContainers();
-        Nodeshot.onNodeClose = '#/map';
+        //Nodeshot.onNodeClose = '#/map';
     },
 
     onShow: function(){
@@ -130,6 +158,9 @@ var MapContentView = Backbone.Marionette.ItemView.extend({
         }
     },
 
+    /*
+     * resize window event
+     */
     resize: function () {
         MapLayoutView.setMapDimensions();
         // when narrowing the window to medium-small size
@@ -144,7 +175,7 @@ var MapContentView = Backbone.Marionette.ItemView.extend({
     },
 
     /*
-     * Initialize Map
+     * initialize leaflet map
      */
     initMap: function() {
         var preferences = Nodeshot.preferences;
@@ -162,14 +193,13 @@ var MapContentView = Backbone.Marionette.ItemView.extend({
 
         // init map
         this.map = this.loadDjangoLeafletMap();
-        //// remember latest coordinates
+        // remember latest coordinates
         var coords = this.rememberCoordinates();
         this.map.setView([coords.lat, coords.lng], coords.zoom, {
             trackResize: true
         });
 
         // load data
-        //this.loadMapData();
         //this.clusterizeMarkers();
         //this.rememberVisibleStatuses();
     },
@@ -178,11 +208,190 @@ var MapContentView = Backbone.Marionette.ItemView.extend({
      * Overridden by custom django-leaflet template in
      * {UI}/templates/leaflet/_lefalet_map.html
      */
-    loadDjangoLeafletMap: function(){}
-})
+    loadDjangoLeafletMap: function(){},
+
+    /*
+     * fetches GeoJSON data and triggers addGeoJsonToMap
+     */
+    loadMapData: function(){
+        var self = this,
+            layers = Nodeshot.layers.pluck('slug'),
+            // trigger collection ready after all sources have been fetched
+            collectionReady = _.after(layers.length, function(){
+                self.trigger('collection:ready', self.collection);
+                // unbind event
+                self.off('collection:merged');
+            });
+        this.on('collection:merged', collectionReady);
+        // fetch GeoJSON
+        // sync event of collection triggers addGeoJsonToMap
+        _.each(layers, function(slug){
+            //this.leafletGroups.push(L.layerGroup)();
+            self.collection.merge({ slug: slug }).done(function(){
+                // fire event to notify data has been merged
+                self.trigger('collection:merged');
+            });
+        });
+        this.addControls();
+    },
+
+    /*
+     * Add controls to hide / show markers
+     */
+    addControls: function(){
+        var elements = $.merge(Nodeshot.legend.toJSON(), Nodeshot.layers.toJSON()),
+            self = this,
+            groups = {};
+        _.each(elements, function(element){
+            var group = L.layerGroup();
+            group.addTo(self.map);
+            self.map.layerscontrol.addOverlay(group, element.name);
+            groups[element.slug] = {
+                "name": element.name,
+                "visible": true,
+                "leafletGroup": group,
+            };
+        });
+        this.groups = groups;
+    },
+
+    /*
+     * toggle leaflet group
+     */
+    toggleGroup: function(slug){
+        var group = this.groups[slug],
+            leafletLayers = group.leafletGroup.getLayers(),
+            self = this,
+            method,
+            newState;
+        if(group.visible){
+            method = 'removeLayer';
+            newState = false;
+        }
+        else{
+            method = 'addLayer';
+            newState = true;
+        }
+        leafletLayers.forEach(function(leafletLayer){
+            self.map[method](leafletLayer);
+        });
+        group.visible = newState;
+    },
+
+    /*
+     * Load markers on map using GeoJSON
+     */
+    addGeoJsonToMap: function(collection, geojson, xhr){
+        var self = this,
+            navigate = NodeshotRouter.navigate,
+            popUpTemplate = _.template($('#map-popup-template').html()),
+            preferences = Nodeshot.preferences,
+            legend = Nodeshot.legend,
+            options = {
+                fill: true,
+                lineCap: 'circle',
+                radius: 6,
+                opacity: 1,
+                fillOpacity: 0.7
+            };
+
+        var leafletLayer = L.geoJson(geojson, {
+            style: function (feature) {
+                var status = legend.get(feature.properties.status).toJSON();
+                options.fillColor = status.fill_color;
+                options.stroke = status.stroke_width > 0;
+                options.weight = status.stroke_width;
+                options.color = status.stroke_color;
+                options.className = 'marker-' + status.slug;
+                return options
+            },
+            onEachFeature: function (feature, leafletLayer) {
+                // bind leaflet popup
+                leafletLayer.bindPopup(popUpTemplate(feature.properties));
+                // when popup opens, change the URL fragment
+                leafletLayer.on('popupopen', function(){
+                    navigate('map/'+feature.id)
+                });
+                // when popup closes (and no new popup opens)
+                // URL fragment goes back to initial state
+                leafletLayer.on('popupclose', function(){
+                    setTimeout(function(){
+                        if (self.map._popup === null) {
+                            navigate('map');
+                        }
+                    }, 200);
+                });
+            },
+            pointToLayer: function (feature, latlng) {
+                var marker = L.circleMarker(latlng, options);
+                // add reference to marker in model
+                collection.get(feature.id).set('marker', marker);
+                // add marker to respective groups
+                self.groups[feature.properties.layer].leafletGroup.addLayer(marker);
+                self.groups[feature.properties.status].leafletGroup.addLayer(marker);
+                // return marker
+                return marker
+            }
+        });
+        this.map.addLayer(leafletLayer);
+
+        //this.map.addLayer(group);
+
+        // visible statuses
+        //preferences.visibleStatuses = preferences.visibleStatuses || _.keys(Nodeshot.statuses)
+        //// visible layers
+        //preferences.visibleLayers = preferences.visibleLayers || Nodeshot.layersSlugs;
+        //
+        //// loop over each layer
+        //for (var i = 0; i < Nodeshot.layers.length; i++) {
+        //    var layer = Nodeshot.layers[i],
+        //        visibleStatuses = Nodeshot.preferences.visibleStatuses.split(','),
+        //        visibleLayers = Nodeshot.preferences.visibleLayers.split(',');
+        //
+        //
+        //}
+        //this.countVisibleNodesByStatus();
+    },
+
+    /*
+     * Open leaflet popup of the specified element
+     */
+    openLeafletPopup: function(id){
+        var collection = this.collection,
+            self = this;
+        // open leaflet pop up if ready
+        if (collection.length && typeof collection !== 'undefined') {
+            try {
+                this.collection.get(id).get('marker').openPopup();
+            } catch(e) {
+                $.createModal({
+                    message: id + ' not found',  // TODO: i18n
+                    onClose: function(){
+                        NodeshotRouter.navigate('map');
+                    }
+                });
+            }
+        }
+        // if not ready wait for map.collectionReady and call again
+        else{
+            this.once('collection:ready', function(){
+                self.openLeafletPopup(id);
+            });
+        }
+    },
+
+    /*
+     * Close leaflet popup if open
+     */
+    closeLeafletPopup: function(){
+        var popup = $('#map-js .leaflet-popup-close-button');
+        if (popup.length) {
+            popup.get(0).click();
+        }
+    }
+});
 
 var MapLegendView = Backbone.Marionette.ItemView.extend({
-    name: 'MapLegendView',
     template: '#map-legend-template',
     id: 'map-legend',
     className: 'overlay inverse',
@@ -195,12 +404,13 @@ var MapLegendView = Backbone.Marionette.ItemView.extend({
         'click @ui.close': 'toggleLegend',
         'click li a': 'toggleLegendControl'
     },
-    
+
     initialize: function(collection, parent){
         this.parent = parent;
         this.legendButton = parent.toolbar.currentView.ui.legendButton;
+        this.listenTo(parent.map.currentView, 'collection:ready', this.count);
     },
-    
+
     onRender: function(){
         preferences = Nodeshot.preferences;
         if (preferences.legendOpen === false || preferences.legendOpen === 'false') {
@@ -209,7 +419,20 @@ var MapLegendView = Backbone.Marionette.ItemView.extend({
             this.legendButton.addClass('disabled');
         }
     },
-    
+
+    /*
+     * calculate counts
+     */
+    count: function(geocollection){
+        var self = this,
+            count;
+        _.each(this.collection.models, function(legend){
+            count = geocollection.where({ "status": legend.get('slug') }).length;
+            legend.set('count', count);
+        });
+        this.render();
+    },
+
     /*
      * open or close legend
      */
@@ -256,7 +479,6 @@ var MapLegendView = Backbone.Marionette.ItemView.extend({
 });
 
 var MapToolbarView = Backbone.Marionette.ItemView.extend({
-    name: 'MapToolbarView',
     template: '#map-toolbar-template',
 
     ui: {
@@ -277,16 +499,16 @@ var MapToolbarView = Backbone.Marionette.ItemView.extend({
         // siblings events
         'click @ui.legendButton': 'toggleLegend'
     },
-    
+
     initialize: function(model, parent){
         this.parent = parent;
     },
-    
+
     onRender: function(){
         var self = this;
         // init tooltip
         this.ui.buttons.tooltip();
-        
+
         // correction for map tools
         this.ui.toolsButton.click(function (e) {
             var button = $(this),
@@ -297,7 +519,7 @@ var MapToolbarView = Backbone.Marionette.ItemView.extend({
                 prefButton.tooltip('enable');
             }
         });
-        
+
         // correction for map-filter
         this.ui.layersControl.click(function (e) {
             var button = $(this),
@@ -309,7 +531,7 @@ var MapToolbarView = Backbone.Marionette.ItemView.extend({
             }
         });
     },
-    
+
     /*
      * show / hide map toolbar on narrow screens
      */
@@ -341,21 +563,21 @@ var MapToolbarView = Backbone.Marionette.ItemView.extend({
         }
         MapLayoutView.setMapDimensions();
     },
-    
+
     /*
      * redirects to MapPanelsView
      */
     toggleLegend: function(e){
         this.parent.legend.currentView.toggleLegend(e);
     },
-    
+
     /*
      * redirects to MapPanelsView
      */
     togglePanel: function (e) {
         this.parent.panels.currentView.togglePanel(e);
     },
-    
+
     /*
      * toggle 3D or 2D map
      */
@@ -363,7 +585,7 @@ var MapToolbarView = Backbone.Marionette.ItemView.extend({
         e.preventDefault();
         $.createModal({message:'not implemented yet'});
     },
-    
+
     // TODO
     addNode: function(){},
     // TODO
@@ -371,7 +593,6 @@ var MapToolbarView = Backbone.Marionette.ItemView.extend({
 });
 
 var MapPanelsView = Backbone.Marionette.ItemView.extend({
-    name: 'MapPanelsView',
     template: '#map-panels-template',
 
     ui: {
@@ -387,14 +608,14 @@ var MapPanelsView = Backbone.Marionette.ItemView.extend({
         'click #toggle-toolbar': 'toggleToolbar',
         'switch-change #fn-map-layers .toggle-layer-data': 'toggleLayerData'
     },
-    
+
     initialize: function(model, parent){
         this.parent = parent;
         this.mapView = parent.map.currentView;
         this.toolbarView = parent.toolbar.currentView;
         this.toolbarButtons = this.toolbarView.ui.buttons;
     },
-    
+
     onRender: function(){
         this.ui.tools.tooltip()
         // activate switch
@@ -409,7 +630,7 @@ var MapPanelsView = Backbone.Marionette.ItemView.extend({
             style: 'btn-special'
         });
     },
-    
+
     /*
      * show / hide toolbar panels
      */
@@ -459,12 +680,14 @@ var MapPanelsView = Backbone.Marionette.ItemView.extend({
             });
         });
     },
-    
+
     /*
      * toggle map tool
      */
     toggleTool: function (e) {
         e.preventDefault();
+        $.createModal({ message: 'not implemented yet' });
+        return false;
         var button = $(e.currentTarget),
             active_buttons = $('#fn-map-tools .tool.active');
         // if activating a tool
@@ -481,14 +704,14 @@ var MapPanelsView = Backbone.Marionette.ItemView.extend({
             button.tooltip('enable');
         }
     },
-    
+
     /*
      * proxy to MapToolbarView.toggleToolbar
      */
     toggleToolbar: function (e) {
         this.toolbarView.toggleToolbar(e);
     },
-    
+
     /*
      * search for an address
      * put a marker on the map and zoom in
@@ -528,7 +751,7 @@ var MapPanelsView = Backbone.Marionette.ItemView.extend({
             }
         });
     },
-    
+
     /*
      * remove the marker added in searchAddress
      */
@@ -544,13 +767,12 @@ var MapPanelsView = Backbone.Marionette.ItemView.extend({
             });
         }
     },
-    
+
     // TODO
     toggleLayerData: function(){}
 });
 
 var MapView = Backbone.Marionette.ItemView.extend({
-    name: 'MapView',
     id: 'map-container',
     template: '#map-template',
 

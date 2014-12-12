@@ -105,17 +105,21 @@ var NodeshotController = {
 
     // map view
     getMap: function () {
-        Nodeshot.body.empty();
-        Nodeshot.body.show(new MapLayoutView());
+        if (typeof Nodeshot.body.currentView === "undefined" || ! (Nodeshot.body.currentView instanceof MapLayoutView)) {
+            Nodeshot.body.empty();
+            Nodeshot.body.show(new MapLayoutView());
+        }
+        else{
+            Nodeshot.body.currentView.reset();
+        }
+        // TODO this should be inside view
         $('#nav-bar a[href="#/map"]').trigger('click').parent().addClass('active');
     },
 
     // map node popup
-    getMapNode: function (slug) {
-        if (typeof (Nodeshot.body.currentView) === "undefined" || Nodeshot.body.currentView.name != 'MapView') {
-            this.getMap();
-        }
-        Nodeshot.nodesNamed[slug].openPopup();
+    getMapPopup: function (id) {
+        this.getMap();
+        Nodeshot.body.currentView.map.currentView.openLeafletPopup(id);
     },
 
     // user profile view
@@ -153,7 +157,7 @@ var NodeshotRouter = new Marionette.AppRouter({
         "_=_": "index", // facebook redirects here
         "pages/:slug": "getPage",
         "map": "getMap",
-        "map/:slug": "getMapNode",
+        "map/:slug": "getMapPopup",
         "nodes": "getNodeList",
         "nodes/:slug": "getNode",
         "users/:username": "getUser"

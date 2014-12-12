@@ -1,20 +1,102 @@
 var GeoModel = Backbone.Model.extend({
-    // parse GeoJSON
-    //parse: function(response) {
-    //    var geojson = response.features;
-    //    for(var key in geojson){}
-    //}
+    idAttribute: 'slug',
+
+    /*
+     * converts a GeoJSON object into a flat object
+     */
+    parse: function(geojson) {
+        obj = geojson.properties;
+        obj.slug = geojson.id;
+        obj.geometry = geojson.geometry
+        return obj;
+    },
+
+    /*
+     * returns a GeoJSON object
+     */
+    toGeoJSON: function(){
+        json = this.toJSON();
+        // prepare main keys
+        var geojson = {
+            "type": "Feature",
+            "id": json.slug,
+            "geometry": json.geometry
+        }
+        delete(json.geometry)
+        // move rest into properties
+        geojson['properties'] = json
+        // return geojson
+        return geojson
+    }
 })
 
+var GeoCollection = Backbone.Collection.extend({
+    _url: '/api/v1/layers/:slug/nodes.geojson',
+    model: GeoModel,
+
+    /*
+     * fetch contents and merges it with the previous ones
+     */
+    merge: function(options){
+        options = $.extend({
+            add: true,
+            merge: true,
+            remove: false
+        }, options);
+        return this.fetch(options);
+    },
+
+    /*
+     * adds slug to object attributes
+     */
+    fetch: function(options) {
+        options = $.extend({
+            slug: this.slug
+        }, options);
+        this.slug = options.slug;
+        // Call Backbone's fetch
+        return Backbone.Collection.prototype.fetch.call(this, options);
+    },
+
+    /*
+     * like Backbone.Collection.prototype.where but returns collection
+     */
+    whereCollection: function(options){
+        return new GeoCollection(this.where(options));
+    },
+
+    /*
+     * determine url depending on slug attribute
+     */
+    url: function(){
+        return this._url.replace(':slug', this.slug);
+    },
+
+    /*
+     * parse geojson
+     */
+    parse: function(response) {
+        return response.features;
+    },
+
+    /*
+     * returns a pesudo GeoJSON object (leaflet compatible)
+     */
+    toGeoJSON: function(){
+        return this.map(function(model){ return model.toGeoJSON(); });
+    }
+});
+
 var LegendModel = Backbone.Model.extend({
+    idAttribute: 'slug',
     defaults: {
-        "stats": ""
+        "count": ""
     }
 });
 
 var LegendCollection = Backbone.Collection.extend({
     url: '/api/v1/status/',
-    model: LegendModel
+    model: LegendModel,
 });
 
 var LayerCollection = Backbone.Collection.extend({

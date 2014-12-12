@@ -49,7 +49,7 @@ class DefaultUiTest(TestCase):
     def tearDownClass(cls):
         cls.browser.quit()
         super(DefaultUiTest, cls).tearDownClass()
-    
+
     def setUp(self):
         self.browser.execute_script('localStorage.clear()')
 
@@ -122,24 +122,24 @@ class DefaultUiTest(TestCase):
     def test_map(self):
         self._hashchange('#/map')
         browser = self.browser
-        
+
         # basic test
         LEAFLET_MAP = 'Nodeshot.body.currentView.map.currentView.map'
         self.assertTrue(browser.execute_script("return Nodeshot.body.currentView.$el.attr('id') == 'map-container'"))
         browser.find_element_by_css_selector('#map-js.leaflet-container')
         self.assertTrue(browser.execute_script("return %s._leaflet_id > -1" % LEAFLET_MAP))
-        
+
         # layers control
         browser.find_element_by_css_selector('#map-js .leaflet-control-layers-list')
         LAYERS_CONTROLS = 'return _.values(%s.layerscontrol._layers)' % LEAFLET_MAP
         self.assertEqual(browser.execute_script('%s[0].name' % LAYERS_CONTROLS), 'Map')
         self.assertEqual(browser.execute_script('%s[1].name' % LAYERS_CONTROLS), 'Satellite')
-        
+
         # ensure coordinates are correct
         self.assertEqual(browser.execute_script("return %s.getZoom()" % LEAFLET_MAP), local_settings.MAP_ZOOM)
         # leaflet coordinates are approximated when zoom is low, so let's check Nodeshot JS settings
         self.assertEqual(browser.execute_script("return Nodeshot.MAP_CENTER"), local_settings.MAP_CENTER)
-        
+
         # ensure rememberCoordinates() works
         browser.execute_script("%s.setView([42.111111, 12.111111], 17)" % LEAFLET_MAP)
         sleep(0.5)
@@ -151,27 +151,86 @@ class DefaultUiTest(TestCase):
         self.assertEqual(browser.execute_script("return %s.getZoom()" % LEAFLET_MAP), 17)
         self.assertEqual(browser.execute_script("return %s.getCenter().lat.toString().substr(0, 8)" % LEAFLET_MAP), "42.11111")
         self.assertEqual(browser.execute_script("return %s.getCenter().lng.toString().substr(0, 8)" % LEAFLET_MAP), "12.11111")
-        
+
         # map is resized when window is resized
+        browser.set_window_size(1000, 700)
         window_size = browser.get_window_size()
+
         map_size = {}
         map_size['width'] = browser.execute_script("return $('#map-js').width()")
         map_size['height'] = browser.execute_script("return $('#map-js').height()")
         browser.set_window_size(window_size['width']-10, window_size['height']-10)
+
         self.assertEqual(browser.execute_script("return $('#map-js').width()"), map_size['width']-10)
         self.assertEqual(browser.execute_script("return $('#map-js').height()"), map_size['height']-10)
         browser.set_window_size(window_size['width'], window_size['height'])
         self.assertEqual(browser.execute_script("return $('#map-js').width()"), map_size['width'])
         self.assertEqual(browser.execute_script("return $('#map-js').height()"), map_size['height'])
 
+        # esnure data has been loaded
+        map_objects = browser.execute_script('return Nodeshot.body.currentView.map.currentView.collection.length')
+        nodes = Node.objects.published().access_level_up_to('public').count()
+        self.assertEqual(map_objects, nodes)
+
+    def test_map_popup(self):
+        browser = self.browser
+
+        # changing url fragment opens popup
+        self._hashchange('#/map/pomezia')
+        sleep(0.2)
+        self.assertEqual(len(browser.find_elements_by_css_selector('#map-js .leaflet-popup-content-wrapper')), 1)
+        self.assertEqual(browser.find_element_by_css_selector('#map-js .leaflet-popup-content-wrapper h4').text, 'Pomezia')
+
+        # refreshing goes back there
+        browser.refresh()
+        sleep(0.2)
+        self.assertEqual(len(browser.find_elements_by_css_selector('#map-js .leaflet-popup-content-wrapper')), 1)
+        self.assertEqual(browser.find_element_by_css_selector('#map-js .leaflet-popup-content-wrapper h4').text, 'Pomezia')
+
+        # changing fragment goes to another element
+        self._hashchange('#/map/fusolab')
+        sleep(0.2)
+        self.assertEqual(len(browser.find_elements_by_css_selector('#map-js .leaflet-popup-content-wrapper')), 1)
+        self.assertEqual(browser.find_element_by_css_selector('#map-js .leaflet-popup-content-wrapper h4').text, 'Fusolab Rome')
+
+        # back button supported
+        browser.back()
+        sleep(0.2)
+        self.assertEqual(browser.find_element_by_css_selector('#map-js .leaflet-popup-content-wrapper h4').text, 'Pomezia')
+
+        # forward button supported
+        browser.forward()
+        sleep(0.2)
+        self.assertEqual(browser.find_element_by_css_selector('#map-js .leaflet-popup-content-wrapper h4').text, 'Fusolab Rome')
+
+        # close button changes url fragment to "map"
+        browser.find_element_by_css_selector('#map-js .leaflet-popup-close-button').click()
+        sleep(0.3)
+        self.assertEqual(browser.current_url.split('#')[1], 'map')
+        # go back
+        browser.back()
+        self.assertIn('map/fusolab', browser.current_url.split('#')[1])
+        sleep(0.2)
+        self.assertEqual(browser.find_element_by_css_selector('#map-js .leaflet-popup-content-wrapper h4').text, 'Fusolab Rome')
+        # go forward and expect popup to be closed
+        browser.forward()
+        self.assertEqual(browser.current_url.split('#')[1], 'map')
+        self.assertEqual(len(browser.find_elements_by_css_selector('#map-js .leaflet-popup-content-wrapper')), 0)
+
+        # does not exist case
+        self._hashchange('#/map/wrong')
+        sleep(0.25)
+        self.assertEqual(browser.find_element_by_css_selector('#tmp-modal').is_displayed(), True)
+        browser.find_element_by_css_selector('#tmp-modal button').click()
+
     def test_map_toolbar(self):
         self._hashchange('#/map')
         browser = self.browser
-        
+
         # ensure rendered
         self.assertGreater(len(browser.find_elements_by_css_selector('#map-toolbar a')), 4)
         self.assertEqual(len(browser.find_elements_by_css_selector('#map-toolbar')), 1)
-        
+
         # open search address panel
         panel = browser.find_element_by_css_selector('#fn-search-address')
         button = browser.find_element_by_css_selector('#map-toolbar .icon-search')
@@ -184,7 +243,6 @@ class DefaultUiTest(TestCase):
         input.send_keys('Via Silvio Pellico, Pomezia, Italy')
         submit.click()
         WebDriverWait(browser, 5).until(ajax_complete, 'Search address timeout')
-        sleep(5)
         self.assertEqual(browser.execute_script('return typeof(Nodeshot.body.currentView.panels.currentView.addressMarker)'), 'object')
         self.assertEqual(browser.execute_script('return Nodeshot.body.currentView.map.currentView.map.getZoom()'), 17)
         input.clear()
@@ -193,7 +251,7 @@ class DefaultUiTest(TestCase):
         self.assertFalse(panel.is_displayed())
         sleep(1.55)
         self.assertEqual(browser.execute_script('return typeof(Nodeshot.body.currentView.panels.currentView.addressMarker)'), 'undefined')
-        
+
         # layers control
         panel = browser.find_element_by_css_selector('#fn-map-layers')
         self.assertFalse(panel.is_displayed())
@@ -214,7 +272,7 @@ class DefaultUiTest(TestCase):
         sleep(0.1)
         browser.find_element_by_css_selector('#map-toolbar .icon-layer-2.active')
         self.assertTrue(panel.is_displayed())
-        
+
         # test map tools panel
         panel = browser.find_element_by_css_selector('#fn-map-tools')
         button = browser.find_element_by_css_selector('#map-toolbar .icon-tools')
@@ -225,7 +283,7 @@ class DefaultUiTest(TestCase):
         # close panel
         self.browser.find_element_by_css_selector('#fn-map-tools-mask').click()
         self.assertFalse(panel.is_displayed())
-        
+
         # test toolbar hide/show on mobile
         toolbar = browser.find_element_by_css_selector('#map-toolbar')
         button = browser.find_element_by_css_selector('#toggle-toolbar')
@@ -253,31 +311,43 @@ class DefaultUiTest(TestCase):
     def test_map_legend(self):
         self._hashchange('#/map')
         browser = self.browser
-        
+
         # ensure legend is open
         button = browser.find_element_by_css_selector('#btn-legend.disabled')
         legend = browser.find_element_by_css_selector('#map-legend')
         self.assertTrue(legend.is_displayed())
-        
+
+        # ensure counts are correct
+        ui_potential = int(browser.find_element_by_css_selector('#legend-item-potential .stats').text)
+        ui_planned = int(browser.find_element_by_css_selector('#legend-item-planned .stats').text)
+        ui_active = int(browser.find_element_by_css_selector('#legend-item-active .stats').text)
+        queryset = Node.objects.published().access_level_up_to('public')
+        db_potential = queryset.filter(status__slug='potential').count()
+        db_planned = queryset.filter(status__slug='planned').count()
+        db_active = queryset.filter(status__slug='active').count()
+        self.assertEqual(ui_potential, db_potential)
+        self.assertEqual(ui_planned, db_planned)
+        self.assertEqual(ui_active, db_active)
+
         # ensure legend item can be disabled
         browser.find_element_by_css_selector('#map-legend a').click()
         self.assertIn('disabled', browser.find_element_by_css_selector('#map-legend li').get_attribute('class'))
         # ensure it can be re-enabled
         browser.find_element_by_css_selector('#map-legend a').click()
         self.assertNotIn('disabled', browser.find_element_by_css_selector('#map-legend li').get_attribute('class'))
-        
+
         # ensure it can be closed
         browser.find_element_by_css_selector('#map-legend .icon-close').click()
         sleep(0.3)
         self.assertFalse(legend.is_displayed())
         self.assertNotIn('disabled', button.get_attribute('class'))
-        
+
         # reopen again
         button.click()
         sleep(0.3)
         self.assertIn('disabled', button.get_attribute('class'))
         self.assertTrue(legend.is_displayed())
-        
+
         # ensure preference is mantained when switching pages back and forth
         button.click()
         sleep(0.3)
