@@ -71,7 +71,7 @@ var NodeDetailsView = Backbone.Marionette.ItemView.extend({
 
         // store coordinates in preferences
         if(this.model && this.model.get('geometry')){
-            var coords = this.model.get('geometry')['coordinates'];
+            var coords = this.model.get('geometry').coordinates;
             Nodeshot.preferences.mapLat = coords[1];
             Nodeshot.preferences.mapLng = coords[0];
         }
@@ -138,7 +138,7 @@ var NodeDetailsView = Backbone.Marionette.ItemView.extend({
     permalink: function(e){
         e.preventDefault();
         var text = $(e.target).attr('data-text');
-        window.prompt(text, window.location.href)
+        window.prompt(text, window.location.href);
     },
 
     /*
@@ -167,7 +167,7 @@ var NodeDetailsView = Backbone.Marionette.ItemView.extend({
             $('.icon-thumbs-down').removeClass('fade');
             relationships.counts.likes = backup;
             self.model.set('relationships', relationships);
-            $.createModal({ message: 'error' })
+            $.createModal({ message: 'error' });
         });
     },
 
@@ -197,7 +197,7 @@ var NodeDetailsView = Backbone.Marionette.ItemView.extend({
             $('.icon-thumbs-down').removeClass('fade');
             relationships.counts.dislikes = backup;
             self.model.set('relationships', relationships);
-            $.createModal({ message: 'error' })
+            $.createModal({ message: 'error' });
         });
     },
 
@@ -261,7 +261,7 @@ var NodeDetailsView = Backbone.Marionette.ItemView.extend({
                 "text": commentText,
                 "added": Date.now()
             }
-        )
+        );
         this.model.set('relationships', relationships);
         this.model.trigger('change');
         // scroll to last comment
@@ -303,15 +303,15 @@ var NodeDetailsView = Backbone.Marionette.ItemView.extend({
                 stars.push('full');
             }
             else if(value >= 0.5){
-                stars.push('half')
+                stars.push('half');
             }
             else{
-                stars.push('empty')
+                stars.push('empty');
             }
             value--;
         }
 
-        return stars
+        return stars;
     },
 
     /*
@@ -366,7 +366,7 @@ var NodeDetailsView = Backbone.Marionette.ItemView.extend({
      */
     goBack: function(e){
         e.preventDefault();
-        NodeshotRouter.navigate(
+        Nodeshot.router.navigate(
             Nodeshot.onNodeClose,
             { trigger: true }
         )

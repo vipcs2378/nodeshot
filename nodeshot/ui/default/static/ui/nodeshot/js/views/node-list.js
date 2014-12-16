@@ -67,7 +67,7 @@ var NodeListView = Backbone.Marionette.CompositeView.extend({
         return {
             'total': this.model.get('total'),
             'collection': this.collection
-        }
+        };
     },
 
     /* --- layout --- */
@@ -105,7 +105,7 @@ var NodeListView = Backbone.Marionette.CompositeView.extend({
             $('html').on('click', function(e){
                 if($(e.target).parents('.filter-panel').length === 0){
                     panel.hide();
-                    $('html').unbind('click')
+                    $('html').unbind('click');
                 }
                 else{
                     panel.hide();

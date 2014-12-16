@@ -1,5 +1,4 @@
 from django.shortcuts import render
-from django.conf import settings
 from nodeshot.core.layers.models import Layer
 from . import settings as ui_settings
 

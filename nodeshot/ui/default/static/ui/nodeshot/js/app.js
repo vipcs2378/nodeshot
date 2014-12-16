@@ -1,3 +1,5 @@
+"use strict";
+
 Nodeshot.addRegions({
     body: '#body'
 });
@@ -58,7 +60,7 @@ Nodeshot.addInitializer(function () {
 var NodeshotController = {
     // index
     index: function () {
-        Backbone.history.navigate('#pages/home', {
+        Nodeshot.router.navigate('#pages/home', {
             trigger: true
         });
     },
@@ -81,9 +83,9 @@ var NodeshotController = {
     },
 
     // node list
-    getNodeList: function() {
+    getNodeList: function () {
         new NodeCollection().fetch({
-            success: function(collection){
+            success: function (collection) {
                 Nodeshot.body.empty();
                 Nodeshot.body.show(new NodeListView({
                     model: new Backbone.Model({ collection: collection }),
@@ -109,7 +111,7 @@ var NodeshotController = {
             Nodeshot.body.empty();
             Nodeshot.body.show(new MapLayoutView());
         }
-        else{
+        else {
             Nodeshot.body.currentView.reset();
         }
         // TODO this should be inside view
@@ -127,13 +129,13 @@ var NodeshotController = {
         var user = new User({ username: username });
 
         user.fetch()
-        .done(function(){
+        .done(function () {
             Nodeshot.body.empty();
             Nodeshot.body.show(new UserDetailsView({
                 model: user
             }));
         })
-        .error(function(http){
+        .error(function (http) {
             // TODO: D.R.Y.
             if (http.status === 404) {
                 $.createModal({
@@ -148,9 +150,9 @@ var NodeshotController = {
 
         $('#nav-bar li').removeClass('active');
     }
-}
+};
 
-var NodeshotRouter = new Marionette.AppRouter({
+Nodeshot.router = new Marionette.AppRouter({
     controller: NodeshotController,
     appRoutes: {
         "": "index",
@@ -171,9 +173,9 @@ $(document).ready(function ($) {
     $('#nav-bar').delegate('#ns-top-nav-links li a', 'click', function (e) {
         var a = $(this);
         // if href doesn't start with javascript
-        if (a.attr('href').substr(0, 10) != 'javascript') {
+        if (a.attr('href').substr(0, 10) !== 'javascript') {
             // if not dropdown and not clicking again on an active link
-            if(!a.hasClass('dropdown-toggle') && !a.parents('li.active').length){
+            if (!a.hasClass('dropdown-toggle') && !a.parents('li.active').length) {
                 $('#ns-top-nav-links li.active').removeClass('active');
             }
         }
@@ -266,12 +268,12 @@ $(document).ready(function ($) {
     $('.hastip').tooltip();
 
     // load full user profile
-    if(Nodeshot.currentUser.isAuthenticated()){
+    if (Nodeshot.currentUser.isAuthenticated()) {
         Nodeshot.currentUser.fetch();
     }
 
     // create status CSS classes
-    css = _.template($('#status-css-template').html());
+    var css = _.template($('#status-css-template').html());
     $('head').append(css);
 
     $('#mobile-nav').click(function (e) {
@@ -289,7 +291,7 @@ $(document).ready(function ($) {
             coefficient = $(this).attr('data-autocenter-coefficient');
 
         if (!coefficient) {
-            coefficient = 2.1
+            coefficient = 2.1;
         }
 
         dialog.css({
@@ -298,15 +300,15 @@ $(document).ready(function ($) {
         });
 
         // vertically align to center
-        new_height = ($(window).height() - dialog_dimensions.height) / coefficient;
+        var new_height = ($(window).height() - dialog_dimensions.height) / coefficient;
         // ensure new position is greater than zero
         new_height = new_height > 0 ? new_height : 0;
         // set new height
         dialog.css('top', new_height);
-    })
+    });
 });
 
-$(window).load(function(e){
+$(window).load(function (e) {
     $('#preloader').fadeOut(255, function () {
         // clear overflow hidden except if map view
         if (!$('#map').length) {
@@ -316,7 +318,7 @@ $(window).load(function(e){
 });
 
 $(document).ajaxSend(function (event, xhr, settings) {
-    if(settings.url.indexOf('notifications') > -1){
+    if (settings.url.indexOf('notifications') > -1) {
         return;
     }
     $.toggleLoading('show');

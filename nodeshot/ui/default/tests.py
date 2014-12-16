@@ -1,4 +1,3 @@
-import json
 from time import sleep
 
 from django.core.urlresolvers import reverse
@@ -159,10 +158,10 @@ class DefaultUiTest(TestCase):
         map_size = {}
         map_size['width'] = browser.execute_script("return $('#map-js').width()")
         map_size['height'] = browser.execute_script("return $('#map-js').height()")
-        browser.set_window_size(window_size['width']-10, window_size['height']-10)
+        browser.set_window_size(window_size['width'] - 10, window_size['height'] - 10)
 
-        self.assertEqual(browser.execute_script("return $('#map-js').width()"), map_size['width']-10)
-        self.assertEqual(browser.execute_script("return $('#map-js').height()"), map_size['height']-10)
+        self.assertEqual(browser.execute_script("return $('#map-js').width()"), map_size['width'] - 10)
+        self.assertEqual(browser.execute_script("return $('#map-js').height()"), map_size['height'] - 10)
         browser.set_window_size(window_size['width'], window_size['height'])
         self.assertEqual(browser.execute_script("return $('#map-js').width()"), map_size['width'])
         self.assertEqual(browser.execute_script("return $('#map-js').height()"), map_size['height'])
@@ -276,7 +275,6 @@ class DefaultUiTest(TestCase):
         # test map tools panel
         panel = browser.find_element_by_css_selector('#fn-map-tools')
         button = browser.find_element_by_css_selector('#map-toolbar .icon-tools')
-        tool = browser.find_element_by_css_selector('#fn-map-tools .icon-select-area')
         self.assertFalse(panel.is_displayed())
         button.click()
         self.assertTrue(panel.is_displayed())
@@ -329,13 +327,6 @@ class DefaultUiTest(TestCase):
         self.assertEqual(ui_planned, db_planned)
         self.assertEqual(ui_active, db_active)
 
-        # ensure legend item can be disabled
-        browser.find_element_by_css_selector('#map-legend a').click()
-        self.assertIn('disabled', browser.find_element_by_css_selector('#map-legend li').get_attribute('class'))
-        # ensure it can be re-enabled
-        browser.find_element_by_css_selector('#map-legend a').click()
-        self.assertNotIn('disabled', browser.find_element_by_css_selector('#map-legend li').get_attribute('class'))
-
         # ensure it can be closed
         browser.find_element_by_css_selector('#map-legend .icon-close').click()
         sleep(0.3)
@@ -356,6 +347,22 @@ class DefaultUiTest(TestCase):
         self._hashchange('#/map')
         legend = browser.find_element_by_css_selector('#map-legend')
         self.assertFalse(legend.is_displayed())
+
+        # reopen legend
+        browser.find_element_by_css_selector('#btn-legend').click()
+        # ensure groups can be hidden
+        browser.find_element_by_css_selector('#legend-item-active a').click()
+        self.assertIn('disabled', browser.find_element_by_css_selector('#legend-item-active').get_attribute('class'))
+        self.assertEqual(browser.execute_script("return $('#map-js g').length"), 3)
+        # ensure preference is mantained
+        self._hashchange('#/')
+        self._hashchange('#/map')
+        self.assertIn('disabled', browser.find_element_by_css_selector('#legend-item-active').get_attribute('class'))
+        self.assertEqual(browser.execute_script("return $('#map-js g').length"), 3)
+        # ensure it can be re-enabled
+        browser.find_element_by_css_selector('#legend-item-active a').click()
+        self.assertNotIn('disabled', browser.find_element_by_css_selector('#legend-item-active').get_attribute('class'))
+        self.assertEqual(browser.execute_script("return $('#map-js g').length"), 8)
 
     def test_node_list(self):
         self.browser.find_element_by_css_selector('a[href="#/nodes"]').click()

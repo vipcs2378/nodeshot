@@ -1,4 +1,18 @@
+"use strict";
+
 /* --- gobal utility functions --- */
+
+// add setObject to localStorage for automatic JSON conversion
+Storage.prototype.setObject = function (key, value) {
+    this.setItem(key, JSON.stringify(value));
+};
+
+// add getObject to localStorage for automatic JSON conversion
+Storage.prototype.getObject = function (key, fallback) {
+    var value = this.getItem(key);
+    return value ? JSON.parse(value) : fallback;
+};
+
 // implement String trim for older browsers
 if (!String.prototype.trim) {
     String.prototype.trim = $.trim;
@@ -6,40 +20,44 @@ if (!String.prototype.trim) {
 
 // extend jquery to be able to retrieve a cookie
 $.getCookie = function (name) {
-    var cookieValue = null;
-    if (document.cookie && document.cookie != '') {
-        var cookies = document.cookie.split(';');
+    var cookieValue = null,
+        cookies,
+        cookie,
+        i;
+    
+    if (document.cookie && document.cookie !== '') {
+        cookies = document.cookie.split(';');
 
-        for (var i = 0; i < cookies.length; i++) {
-            var cookie = $.trim(cookies[i]);
+        for (i = 0; i < cookies.length; i += 1) {
+            cookie = $.trim(cookies[i]);
             // Does this cookie string begin with the name we want?
-            if (cookie.substring(0, name.length + 1) == (name + '=')) {
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
                 cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
                 break;
             }
         }
     }
     return cookieValue;
-}
+};
 
 $.csrfSafeMethod = function (method) {
     // these HTTP methods do not require CSRF protection
     return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
-}
+};
 
 $.sameOrigin = function (url) {
     // test that a given url is a same-origin URL
     // url could be relative or scheme relative or absolute
-    var host = document.location.host; // host + port
-    var protocol = document.location.protocol;
-    var sr_origin = '//' + host;
-    var origin = protocol + sr_origin;
+    var host = document.location.host, // host + port
+        protocol = document.location.protocol,
+        srOrigin = '//' + host,
+        origin = protocol + srOrigin;
     // Allow absolute or scheme relative URLs to same origin
-    return (url == origin || url.slice(0, origin.length + 1) == origin + '/') ||
-        (url == sr_origin || url.slice(0, sr_origin.length + 1) == sr_origin + '/') ||
+    return (url === origin || url.slice(0, origin.length + 1) === origin + '/') ||
+        (url === srOrigin || url.slice(0, srOrigin.length + 1) === srOrigin + '/') ||
     // or any other URL that isn't scheme relative or absolute i.e relative.
     !(/^(\/\/|http:|https:).*/.test(url));
-}
+};
 
 $.ajaxSetup({
     beforeSend: function (xhr, settings) {
@@ -62,44 +80,22 @@ Math.degrees = function (radians) {
     return radians * 180 / Math.PI;
 };
 
-/*
- * Get Data with async false
- * Returns response from server without having to use a callback
- */
-$.getDataSync = function (url) {
-    var data;
-
-    $.ajax({
-        async: false, //thats the trick
-        url: url,
-        dataType: 'json',
-        success: function (response) {
-            data = response;
-        },
-        error: function (e) {
-            alert(e)
-        }
-    });
-
-    return data;
-}
-
 _.mixin({
     // https://gist.github.com/toekneestuck/1878713
-    nl2br: function(str, is_xhtml){
+    nl2br: function (str, is_xhtml) {
         var breakTag = (is_xhtml || typeof is_xhtml === 'undefined') ? '<br />' : '<br>';
         return (str + '').replace(/([^>\r\n]?)(\r\n|\n\r|\r|\n)/g, '$1' + breakTag + '$2');
     }
 });
 
 // extend underscore with formatDateTime shortcut
-_.formatDateTime = function(dateString){
+_.formatDateTime = function (dateString) {
     // TODO: format configurable
     return $.format.date(dateString, "dd MMMM yyyy, HH:mm");
 };
 
 // extend underscore with formatDate shortcut
-_.formatDate = function(dateString){
+_.formatDate = function (dateString) {
     // TODO: format configurable
     return $.format.date(dateString, "dd MMMM yyyy");
 };
@@ -109,13 +105,14 @@ _.formatDate = function(dateString){
  * @param operation: string "show" or "hide"
  */
 $.toggleLoading = function (operation) {
-    var loading = $('#loading');
+    var loading = $('#loading'),
+        dimensions;
 
     if (!loading.length) {
         $('body').append(_.template($('#loading-template').html()));
         loading = $('#loading');
 
-        var dimensions = loading.getHiddenDimensions();
+        dimensions = loading.getHiddenDimensions();
         loading.outerWidth(dimensions.width);
         loading.css({
             left: 0,
@@ -131,9 +128,9 @@ $.toggleLoading = function (operation) {
         });
     }
 
-    if (operation == 'show') {
+    if (operation === 'show') {
         loading.fadeIn(255);
-    } else if (operation == 'hide') {
+    } else if (operation === 'hide') {
         loading.fadeOut(255);
     } else {
         loading.fadeToggle(255);
@@ -145,51 +142,46 @@ $.toggleLoading = function (operation) {
  * returns an object with height and width
  */
 $.fn.getHiddenDimensions = function () {
-    var self = $(this);
+    var self = $(this), // this element is hidden
+        parents = self.parents(':hidden'); // look for hidden parent elements
 
     // return immediately if element is visible
     if (self.is(':visible')) {
         return {
             width: self.outerWidth(),
             height: self.outerHeight()
-        }
+        };
     }
-
-    var hidden = self, // this element is hidden
-        parents = self.parents(':hidden'); // look for hidden parent elements
 
     // if any hidden parent element
     if (parents.length) {
         // add to hidden collection
-        hidden = $().add(parents).add(hidden);
+        self = $().add(parents).add(self);
     }
 
     /*
      trick all the hidden elements in a way that
      they wont be shown but we'll be able to calculate their width
     */
-    hidden.css({
+    self.css({
         position: 'absolute',
         visibility: 'hidden',
         display: 'block'
     });
 
-    // store width of current element
-    var dimensions = {
-        width: self.outerWidth(),
-        height: self.outerHeight()
-    }
-
     // reset hacked css on hidden elements
-    hidden.css({
+    self.css({
         position: '',
         visibility: '',
         display: ''
     });
 
     // return width
-    return dimensions;
-}
+    return {
+        width: self.outerWidth(),
+        height: self.outerHeight()
+    };
+};
 
 /*
  * Create Modal Dialog
@@ -219,17 +211,17 @@ $.createModal = function (opts) {
 
     $('#tmp-modal .btn-success').one('click', function (e) {
         close();
-        options.successAction()
+        options.successAction();
     });
 
     $('#tmp-modal .btn-default').one('click', function (e) {
         close();
-        options.defaultAction()
+        options.defaultAction();
     });
 
     $('#tmp-modal').one('hidden.bs.modal', function (e) {
         $('#tmp-modal').remove();
-    })
+    });
 };
 
 /*
@@ -237,24 +229,24 @@ $.createModal = function (opts) {
  */
 $.mask = function (element, close) {
     // both arguments required
-    if(!element || !close){
-        throw('missing required arguments');
+    if (!element || !close) {
+        throw ('missing required arguments');
     }
     // jQueryfy if necessary
-    if(!'jquery' in element){
+    if (!'jquery' in element) {
         element = $(element);
     }
     // determine mask id
     var maskId = element.attr('id') + '-mask',
     // determine zIndex of mask
-        zIndex = parseInt(element.css('z-index')) - 1;
+        zIndex = parseInt(element.css('z-index'), 10) - 1;
     // append element to body
     $('body').append('<div class="mask" id="' + maskId + '"></div>');
     // apply z-index
     $('#' + maskId).css('z-index', zIndex)
     // bind event to close
-    .one('click', function(){
+    .one('click', function () {
         close(arguments);
         $(this).remove();
     });
-}
+};

@@ -1,34 +1,69 @@
+'use strict';
+
 var GeoModel = Backbone.Model.extend({
     idAttribute: 'slug',
+    leafletOptions: {
+        fill: true,
+        lineCap: 'circle',
+        radius: 6,
+        opacity: 1,
+        fillOpacity: 0.7
+    },
+
+    initialize: function () {
+        this.set('legend', Nodeshot.legend.get(this.get('status')));
+        this.set('leaflet', this.toLeaflet());
+    },
+
+    toLeaflet: function () {
+        var options = this.leafletOptions,
+            legend = this.get('legend').toJSON();
+        return L.geoJson(this.toGeoJSON(), {
+            style: function (feature) {
+                options.fillColor = legend.fill_color;
+                options.stroke = legend.stroke_width > 0;
+                options.weight = legend.stroke_width;
+                options.color = legend.stroke_color;
+                options.className = 'marker-' + legend.slug;
+                return options;
+            },
+            // used only for points
+            pointToLayer: function (feature, latlng) {
+                return L.circleMarker(latlng, options);
+            }
+        });
+    },
 
     /*
      * converts a GeoJSON object into a flat object
      */
-    parse: function(geojson) {
-        obj = geojson.properties;
+    parse: function (geojson) {
+        var obj = geojson.properties;
         obj.slug = geojson.id;
-        obj.geometry = geojson.geometry
+        obj.geometry = geojson.geometry;
+        delete(obj.legend);
+        delete(obj.marker);
         return obj;
     },
 
     /*
      * returns a GeoJSON object
      */
-    toGeoJSON: function(){
-        json = this.toJSON();
-        // prepare main keys
-        var geojson = {
-            "type": "Feature",
-            "id": json.slug,
-            "geometry": json.geometry
-        }
-        delete(json.geometry)
+    toGeoJSON: function () {
+        var json = this.toJSON(),
+            // prepare main keys
+            geojson = {
+                'type': 'Feature',
+                'id': json.slug,
+                'geometry': json.geometry
+            };
+        delete(json.geometry);
         // move rest into properties
-        geojson['properties'] = json
+        geojson.properties = json;
         // return geojson
-        return geojson
+        return geojson;
     }
-})
+});
 
 var GeoCollection = Backbone.Collection.extend({
     _url: '/api/v1/layers/:slug/nodes.geojson',
@@ -37,7 +72,7 @@ var GeoCollection = Backbone.Collection.extend({
     /*
      * fetch contents and merges it with the previous ones
      */
-    merge: function(options){
+    merge: function (options) {
         options = $.extend({
             add: true,
             merge: true,
@@ -49,7 +84,7 @@ var GeoCollection = Backbone.Collection.extend({
     /*
      * adds slug to object attributes
      */
-    fetch: function(options) {
+    fetch: function (options) {
         options = $.extend({
             slug: this.slug
         }, options);
@@ -61,42 +96,67 @@ var GeoCollection = Backbone.Collection.extend({
     /*
      * like Backbone.Collection.prototype.where but returns collection
      */
-    whereCollection: function(options){
+    whereCollection: function (options) {
         return new GeoCollection(this.where(options));
     },
 
     /*
      * determine url depending on slug attribute
      */
-    url: function(){
+    url: function () {
         return this._url.replace(':slug', this.slug);
     },
 
     /*
      * parse geojson
      */
-    parse: function(response) {
+    parse: function (response) {
         return response.features;
     },
 
     /*
      * returns a pesudo GeoJSON object (leaflet compatible)
      */
-    toGeoJSON: function(){
-        return this.map(function(model){ return model.toGeoJSON(); });
+    toGeoJSON: function () {
+        return this.map(function (model) {
+            return model.toGeoJSON();
+        });
     }
 });
 
 var LegendModel = Backbone.Model.extend({
     idAttribute: 'slug',
     defaults: {
-        "count": ""
+        'count': '',
+        'visible': true
+    },
+
+    initialize: function () {
+        var hiddenGroups = localStorage.getObject('hiddenGroups', []);
+        if (_.include(hiddenGroups, this.get('slug'))) {
+            this.set('visible', false);
+        }
+        this.on('change:visible', this.storeHidden);
+    },
+
+    /**
+     * remember hidden legend groups
+     */
+    storeHidden: function (legend, visible) {
+        var hiddenGroups = localStorage.getObject('hiddenGroups', []);
+        if (visible) {
+            hiddenGroups = _.without(hiddenGroups, legend.id);
+        }
+        else {
+            hiddenGroups = _.union(hiddenGroups, [legend.id]);
+        }
+        localStorage.setObject('hiddenGroups', hiddenGroups);
     }
 });
 
 var LegendCollection = Backbone.Collection.extend({
     url: '/api/v1/status/',
-    model: LegendModel,
+    model: LegendModel
 });
 
 var LayerCollection = Backbone.Collection.extend({
@@ -110,7 +170,7 @@ var Page = Backbone.Model.extend({
 
     url: function () {
         var origUrl = Backbone.Model.prototype.url.call(this);
-        return origUrl + (origUrl.charAt(origUrl.length - 1) == '/' ? '' : '/');
+        return origUrl + (origUrl.charAt(origUrl.length - 1) === '/' ? '' : '/');
     }
 });
 
@@ -119,12 +179,12 @@ var Node = Backbone.Model.extend({
     idAttribute: 'slug',
 
     defaults: {
-        "relationships": false
+        'relationships': false
     },
 
     url: function () {
         var origUrl = Backbone.Model.prototype.url.call(this);
-        return origUrl + (origUrl.charAt(origUrl.length - 1) == '/' ? '' : '/');
+        return origUrl + (origUrl.charAt(origUrl.length - 1) === '/' ? '' : '/');
     }
 });
 
@@ -141,27 +201,27 @@ var NodeCollection = Backbone.PageableCollection.extend({
     },
 
     queryParams: {
-        currentPage: "page",
-        pageSize: "limit",
-        totalRecords: "count"
+        currentPage: 'page',
+        pageSize: 'limit',
+        totalRecords: 'count'
     },
 
-    hasNextPage: function(){
+    hasNextPage: function () {
         return this.next !== null;
     },
 
-    hasPreviousPage: function(){
+    hasPreviousPage: function () {
         return this.previous !== null;
     },
 
-    getNumberOfPages: function(){
+    getNumberOfPages: function () {
         var total = this.count,
             size = this.state.pageSize;
 
-        return Math.ceil(total / size)
+        return Math.ceil(total / size);
     },
 
-    search: function(q){
+    search: function (q) {
         this.searchTerm = q;
         return this.getPage(1, {
             data: { search: q },
@@ -170,14 +230,14 @@ var NodeCollection = Backbone.PageableCollection.extend({
     },
 
     // needed to use pagination results as the collection
-    parse: function(response) {
+    parse: function (response) {
         this.count = response.count;
         this.next = response.next;
         this.previous = response.previous;
         return response.results;
     },
 
-    initialize: function(){
+    initialize: function () {
         this.searchTerm = '';
     }
 });
@@ -187,10 +247,10 @@ var User = Backbone.Model.extend({
     idAttribute: 'username',
 
     defaults: {
-        "avatar": "http://www.gravatar.com/avatar/default"
+        'avatar': 'http://www.gravatar.com/avatar/default'
     },
 
-    initialize: function(){
+    initialize: function () {
         this.setTruncatedUsername();
         this.on('change:username', this.setTruncatedUsername);
     },
@@ -203,7 +263,7 @@ var User = Backbone.Model.extend({
 
         if (typeof (username) !== 'undefined' && username.length > 15) {
             // add an ellipsis if username is too long
-            username = username.substr(0, 13) + "&hellip;";
+            username = username.substr(0, 13) + '&hellip;';
         }
 
         // update model
@@ -213,14 +273,14 @@ var User = Backbone.Model.extend({
     /*
      * returns true if the user is authenticated, false otherwise
      */
-    isAuthenticated: function(){
+    isAuthenticated: function () {
         return this.get('username') !== undefined;
     },
 
     /*
      * performs login
      */
-    login: function(data){
+    login: function (data) {
         var self = this;
 
         self.trigger('login');
@@ -239,7 +299,7 @@ var User = Backbone.Model.extend({
             $.createModal({
                 message: errorMessage,
                 successAction: function () {
-                    $('#signin-modal').css('z-index', zIndex)
+                    $('#signin-modal').css('z-index', zIndex);
                 } // restore z-index
             });
         }).done(function (response) {
@@ -254,7 +314,7 @@ var User = Backbone.Model.extend({
     /*
      * performs logout
      */
-    logout: function(){
+    logout: function () {
         var self = this;
         self.clear();
         self.trigger('logout');
@@ -264,7 +324,7 @@ var User = Backbone.Model.extend({
             $.createModal({
                 message: 'problem while logging out'
             });
-        }).done(function(){
+        }).done(function () {
             // trigger custom event
             self.trigger('loggedout');
         });
@@ -272,28 +332,28 @@ var User = Backbone.Model.extend({
 
     url: function () {
         var origUrl = Backbone.Model.prototype.url.call(this);
-        return origUrl + (origUrl.charAt(origUrl.length - 1) == '/' ? '' : '/');
+        return origUrl + (origUrl.charAt(origUrl.length - 1) === '/' ? '' : '/');
     }
 });
 
 var Notification = Backbone.Model.extend({
     urlRoot: '/api/v1/account/notifications/',
 
-    initialize: function(){
+    initialize: function () {
         this.setIcon();
     },
 
     /*
      * use type attribute to differentiate icons
      */
-    setIcon: function(){
+    setIcon: function () {
         var value = this.get('type').split('_')[0];
         this.set('icon', value);
     },
 
     url: function () {
         var origUrl = Backbone.Model.prototype.url.call(this);
-        return origUrl + (origUrl.charAt(origUrl.length - 1) == '/' ? '' : '/') + '?read=false';
+        return origUrl + (origUrl.charAt(origUrl.length - 1) === '/' ? '' : '/') + '?read=false';
     }
 });
 
@@ -302,18 +362,18 @@ var NotificationCollection = Backbone.Collection.extend({
     url: '/api/v1/account/notifications/?action=all&limit=15',
 
     // needed to use pagination results as the collection
-    parse: function(response) {
+    parse: function (response) {
         return response.results;
     },
 
     /*
      * get number of unread notifications
      */
-    getUnreadCount: function(){
+    getUnreadCount: function () {
         var count = 0;
-        this.models.forEach(function(model){
-            if(model.get('is_read') === false){
-                count++;
+        this.models.forEach(function (model) {
+            if (model.get('is_read') === false) {
+                count += 1;
             }
         });
         return count;
@@ -322,11 +382,11 @@ var NotificationCollection = Backbone.Collection.extend({
     /*
      * mark notifications as read
      */
-    read: function(){
+    read: function () {
         // skip if all notifications are already read
-        if(this.getUnreadCount() > 0){
+        if (this.getUnreadCount() > 0) {
             $.get(this.url.split('?')[0]);
-            this.models.forEach(function(model){
+            this.models.forEach(function (model) {
                 model.set('is_read', true);
             });
             this.trigger('reset');

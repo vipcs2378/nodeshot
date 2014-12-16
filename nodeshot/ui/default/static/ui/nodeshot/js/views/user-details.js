@@ -1,3 +1,5 @@
+"use strict";
+
 var UserDetailsView = Backbone.Marionette.ItemView.extend({
     name: 'UserDetailsView',
     tagName: 'article',
@@ -17,9 +19,9 @@ var UserDetailsView = Backbone.Marionette.ItemView.extend({
     /*
      * prompt permalink
      */
-    permalink: function(e){
+    permalink: function (e) {
         e.preventDefault();
         var text = $(e.target).attr('data-text');
-        window.prompt(text, window.location.href)
+        window.prompt(text, window.location.href);
     }
 });

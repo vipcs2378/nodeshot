@@ -22,7 +22,6 @@
         <script src="//oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
         <script src="//oss.maxcdn.com/libs/respond.js/1.3.0/respond.min.js"></script>
     <![endif]-->
-
     <!-- leaflet -->
     {% leaflet_js %}
     {% leaflet_css %}
@@ -377,7 +376,7 @@
         <h5>{% trans 'Legend' %}</h5>
         <ul>
             <% _.each(items, function(item){ %>
-            <li id="legend-item-<%= item.slug %>">
+            <li id="legend-item-<%= item.slug %>" <% if(!item.visible) { %>class="disabled"<% } %>>
                 <a href="#" data-status="<%= item.slug %>" title="<%= item.description %>">
                     <span class="circle" style="background-color:<%= item.fill_color %>"></span>
                     <%= item.name %>

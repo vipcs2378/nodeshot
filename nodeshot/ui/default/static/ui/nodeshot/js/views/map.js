@@ -1,3 +1,5 @@
+'use strict';
+
 var MapLayoutView = Backbone.Marionette.LayoutView.extend({
     id: 'map-container',
     template: '#map-layout-template',
@@ -10,27 +12,27 @@ var MapLayoutView = Backbone.Marionette.LayoutView.extend({
         addNode: '#add-node-container'
     },
 
-    onShow: function(){
+    onShow: function () {
         this.map.show(new MapContentView({}, this));
         this.toolbar.show(new MapToolbarView({}, this));
         this.showPanels();
         this.showLegend();
     },
 
-    showPanels: function(){
+    showPanels: function () {
         var layers = new LayerCollection(),
             self = this;
-        layers.fetch().done(function(){
+        layers.fetch().done(function () {
             self.panels.show(new MapPanelsView({collection: layers}, self));
             Nodeshot.layers = layers;
             self.trigger('map.layersReady', layers);
         });
     },
 
-    showLegend: function(){
+    showLegend: function () {
         var legend = new LegendCollection(),
             self = this;
-        legend.fetch().done(function(){
+        legend.fetch().done(function () {
             self.legend.show(new MapLegendView({collection: legend}, self));
             Nodeshot.legend = legend;
             self.trigger('map.legendReady', legend);
@@ -40,7 +42,7 @@ var MapLayoutView = Backbone.Marionette.LayoutView.extend({
     /*
      * resets to view initial state
      */
-    reset: function(){
+    reset: function () {
         this.map.currentView.closeLeafletPopup();
     }
 
@@ -51,22 +53,25 @@ var MapLayoutView = Backbone.Marionette.LayoutView.extend({
      * takes most of the available space in the window
      */
     setMapDimensions: function () {
-        var overlayContainer = $('#map-overlay-container');
+        var overlayContainer = $('#map-overlay-container'),
+            height,
+            selector,
+            map_toolbar = $('#map-toolbar'),
+            add_node_container = $('#add-node-container'),
+            width = $(window).width(),
+            map = Nodeshot.body.currentView.map.currentView.map;
+
         // map
         if (!overlayContainer.length) {
-            var height = $(window).height() - $('body > header').height(),
-                selector = '#map-container, #map-toolbar';
+            height = $(window).height() - $('body > header').height();
+            selector = '#map-container, #map-toolbar';
         }
         // node details
         else {
-            var height = overlayContainer.height() + parseInt(overlayContainer.css('top')),
-                selector = '#map-container';
+            height = overlayContainer.height() + parseInt(overlayContainer.css('top'), 10);
+            selector = '#map-container';
         }
         $(selector).height(height);
-
-        var map_toolbar = $('#map-toolbar'),
-            add_node_container = $('#add-node-container'),
-            width = $(window).width();
 
         // take in consideration #add-node-container if visible
         if (add_node_container.is(':visible')) {
@@ -79,7 +84,6 @@ var MapLayoutView = Backbone.Marionette.LayoutView.extend({
         // set width
         $('#map').width(width);
 
-        var map = Nodeshot.body.currentView.map.currentView.map;
         if (map && map.invalidateSize) {
             map.invalidateSize();
         }
@@ -89,16 +93,18 @@ var MapLayoutView = Backbone.Marionette.LayoutView.extend({
 var MapContentView = Backbone.Marionette.ItemView.extend({
     template: false,
 
-    initialize: function(model, parent){
+    initialize: function (model, parent) {
         this.parent = parent;
         this.leafletGroups = [];  // this will be filled in loadMapData
         // bind to namespaced events
-        $(window).on("beforeunload.map", _.bind(this.beforeunload, this));
-        $(window).on("resize.map", _.bind(this.resize, this));
+        $(window).on('beforeunload.map', _.bind(this.beforeunload, this));
+        $(window).on('resize.map', _.bind(this.resize, this));
 
         this.collection = new GeoCollection();
-        // populate map as geojson is fetched from server
-        this.listenTo(this.collection, 'sync', this.addGeoJsonToMap, this);
+        // populate map as items are added to collection
+        this.listenTo(this.collection, 'add', this.addGeoModelToMap, this);
+        // remove items from map when models are removed
+        this.listenTo(this.collection, 'remove', this.removeGeoModelFromMap, this);
 
         // load GeoJSON data when layers and legend are ready
         var loadMapData = _.after(2, this.loadMapData);
@@ -109,7 +115,7 @@ var MapContentView = Backbone.Marionette.ItemView.extend({
         //Nodeshot.onNodeClose = '#/map';
     },
 
-    onShow: function(){
+    onShow: function () {
         this.initMap();
     },
 
@@ -117,8 +123,8 @@ var MapContentView = Backbone.Marionette.ItemView.extend({
         // store current coordinates when changing view
         this.storeCoordinates();
         // unbind the namespaced events
-        $(window).off("beforeunload.map");
-        $(window).off("resize.map");
+        $(window).off('beforeunload.map');
+        $(window).off('resize.map');
     },
 
     beforeunload: function () {
@@ -134,14 +140,14 @@ var MapContentView = Backbone.Marionette.ItemView.extend({
             lat: this.map.getCenter().lat,
             lng: this.map.getCenter().lng,
             zoom: this.map.getZoom()
-        }
+        };
     },
 
     /*
      * store current map coordinates in localStorage
      */
     storeCoordinates: function () {
-        var coords = this.getCoordinates()
+        var coords = this.getCoordinates();
         Nodeshot.preferences.mapLat = coords.lat;
         Nodeshot.preferences.mapLng = coords.lng;
         Nodeshot.preferences.mapZoom = coords.zoom;
@@ -155,7 +161,7 @@ var MapContentView = Backbone.Marionette.ItemView.extend({
             lat: Nodeshot.preferences.mapLat || Nodeshot.MAP_CENTER[0],
             lng: Nodeshot.preferences.mapLng || Nodeshot.MAP_CENTER[1],
             zoom: Nodeshot.preferences.mapZoom || Nodeshot.MAP_ZOOM
-        }
+        };
     },
 
     /*
@@ -164,10 +170,10 @@ var MapContentView = Backbone.Marionette.ItemView.extend({
     resize: function () {
         MapLayoutView.setMapDimensions();
         // when narrowing the window to medium-small size
-        if($(window).width() <= 767){
+        if ($(window).width() <= 767) {
             // if any side-panel remains open
             var panels = $('.side-panel:visible');
-            if(panels.length){
+            if (panels.length) {
                 // trigger click on header to close it
                 $('body>header').trigger('click');
             }
@@ -177,8 +183,8 @@ var MapContentView = Backbone.Marionette.ItemView.extend({
     /*
      * initialize leaflet map
      */
-    initMap: function() {
-        var preferences = Nodeshot.preferences;
+    initMap: function () {
+        var coords = this.rememberCoordinates();
         // unload map if already initialized
         if (typeof (this.map) !== 'undefined') {
             // store current coordinates
@@ -194,7 +200,6 @@ var MapContentView = Backbone.Marionette.ItemView.extend({
         // init map
         this.map = this.loadDjangoLeafletMap();
         // remember latest coordinates
-        var coords = this.rememberCoordinates();
         this.map.setView([coords.lat, coords.lng], coords.zoom, {
             trackResize: true
         });
@@ -208,173 +213,108 @@ var MapContentView = Backbone.Marionette.ItemView.extend({
      * Overridden by custom django-leaflet template in
      * {UI}/templates/leaflet/_lefalet_map.html
      */
-    loadDjangoLeafletMap: function(){},
+    loadDjangoLeafletMap: function () {},
 
     /*
-     * fetches GeoJSON data and triggers addGeoJsonToMap
+     * loads data from API
      */
-    loadMapData: function(){
+    loadMapData: function () {
         var self = this,
             layers = Nodeshot.layers.pluck('slug'),
             // trigger collection ready after all sources have been fetched
-            collectionReady = _.after(layers.length, function(){
+            collectionReady = _.after(layers.length, function () {
                 self.trigger('collection:ready', self.collection);
                 // unbind event
                 self.off('collection:merged');
             });
         this.on('collection:merged', collectionReady);
-        // fetch GeoJSON
-        // sync event of collection triggers addGeoJsonToMap
-        _.each(layers, function(slug){
-            //this.leafletGroups.push(L.layerGroup)();
-            self.collection.merge({ slug: slug }).done(function(){
+        // fetch data from API
+        _.each(layers, function (slug) {
+            self.collection.merge({ slug: slug }).done(function () {
                 // fire event to notify data has been merged
                 self.trigger('collection:merged');
             });
         });
-        this.addControls();
     },
 
     /*
-     * Add controls to hide / show markers
+     * show / hide from map items of a legend group
      */
-    addControls: function(){
-        var elements = $.merge(Nodeshot.legend.toJSON(), Nodeshot.layers.toJSON()),
+    toggleLegendGroup: function (legend, visible) {
+        var method,
             self = this,
-            groups = {};
-        _.each(elements, function(element){
-            var group = L.layerGroup();
-            group.addTo(self.map);
-            self.map.layerscontrol.addOverlay(group, element.name);
-            groups[element.slug] = {
-                "name": element.name,
-                "visible": true,
-                "leafletGroup": group,
-            };
-        });
-        this.groups = groups;
-    },
-
-    /*
-     * toggle leaflet group
-     */
-    toggleGroup: function(slug){
-        var group = this.groups[slug],
-            leafletLayers = group.leafletGroup.getLayers(),
-            self = this,
-            method,
-            newState;
-        if(group.visible){
-            method = 'removeLayer';
-            newState = false;
-        }
-        else{
+            // retrieve leaflet layers
+            leafletLayers = this.collection.whereCollection({
+                legend: legend
+            }).pluck('leaflet');
+        // show or hide from map accordingly
+        if (visible) {
             method = 'addLayer';
-            newState = true;
         }
-        leafletLayers.forEach(function(leafletLayer){
+        else {
+            method = 'removeLayer';
+        }
+        leafletLayers.forEach(function (leafletLayer) {
             self.map[method](leafletLayer);
         });
-        group.visible = newState;
     },
 
     /*
      * Load markers on map using GeoJSON
      */
-    addGeoJsonToMap: function(collection, geojson, xhr){
+    addGeoModelToMap: function (model) {
         var self = this,
-            navigate = NodeshotRouter.navigate,
+            navigate = Nodeshot.router.navigate,
             popUpTemplate = _.template($('#map-popup-template').html()),
-            preferences = Nodeshot.preferences,
-            legend = Nodeshot.legend,
-            options = {
-                fill: true,
-                lineCap: 'circle',
-                radius: 6,
-                opacity: 1,
-                fillOpacity: 0.7
-            };
-
-        var leafletLayer = L.geoJson(geojson, {
-            style: function (feature) {
-                var status = legend.get(feature.properties.status).toJSON();
-                options.fillColor = status.fill_color;
-                options.stroke = status.stroke_width > 0;
-                options.weight = status.stroke_width;
-                options.color = status.stroke_color;
-                options.className = 'marker-' + status.slug;
-                return options
-            },
-            onEachFeature: function (feature, leafletLayer) {
-                // bind leaflet popup
-                leafletLayer.bindPopup(popUpTemplate(feature.properties));
-                // when popup opens, change the URL fragment
-                leafletLayer.on('popupopen', function(){
-                    navigate('map/'+feature.id)
-                });
-                // when popup closes (and no new popup opens)
-                // URL fragment goes back to initial state
-                leafletLayer.on('popupclose', function(){
-                    setTimeout(function(){
-                        if (self.map._popup === null) {
-                            navigate('map');
-                        }
-                    }, 200);
-                });
-            },
-            pointToLayer: function (feature, latlng) {
-                var marker = L.circleMarker(latlng, options);
-                // add reference to marker in model
-                collection.get(feature.id).set('marker', marker);
-                // add marker to respective groups
-                self.groups[feature.properties.layer].leafletGroup.addLayer(marker);
-                self.groups[feature.properties.status].leafletGroup.addLayer(marker);
-                // return marker
-                return marker
-            }
+            leafletLayer = model.get('leaflet'),
+            data = model.toJSON();
+        // bind leaflet popup
+        leafletLayer.bindPopup(popUpTemplate(data));
+        // when popup opens, change the URL fragment
+        leafletLayer.on('popupopen', function () {
+            navigate('map/' + json.slug);
         });
-        this.map.addLayer(leafletLayer);
+        // when popup closes (and no new popup opens)
+        // URL fragment goes back to initial state
+        leafletLayer.on('popupclose', function () {
+            setTimeout(function () {
+                if (self.map._popup === null) {
+                    navigate('map');
+                }
+            }, 200);
+        });
+        // show it on map only if legend item is visible
+        if (model.get('legend').get('visible')) {
+            this.map.addLayer(leafletLayer);
+        }
+    },
 
-        //this.map.addLayer(group);
-
-        // visible statuses
-        //preferences.visibleStatuses = preferences.visibleStatuses || _.keys(Nodeshot.statuses)
-        //// visible layers
-        //preferences.visibleLayers = preferences.visibleLayers || Nodeshot.layersSlugs;
-        //
-        //// loop over each layer
-        //for (var i = 0; i < Nodeshot.layers.length; i++) {
-        //    var layer = Nodeshot.layers[i],
-        //        visibleStatuses = Nodeshot.preferences.visibleStatuses.split(','),
-        //        visibleLayers = Nodeshot.preferences.visibleLayers.split(',');
-        //
-        //
-        //}
-        //this.countVisibleNodesByStatus();
+    removeGeoModelFromMap: function (model) {
+        this.map.removeLayer(model.get('leaflet'));
     },
 
     /*
      * Open leaflet popup of the specified element
      */
-    openLeafletPopup: function(id){
+    openLeafletPopup: function (id) {
         var collection = this.collection,
             self = this;
         // open leaflet pop up if ready
         if (collection.length && typeof collection !== 'undefined') {
             try {
-                this.collection.get(id).get('marker').openPopup();
-            } catch(e) {
+                this.collection.get(id).get('leaflet').openPopup();
+            } catch (e) {
                 $.createModal({
                     message: id + ' not found',  // TODO: i18n
-                    onClose: function(){
-                        NodeshotRouter.navigate('map');
+                    onClose: function () {
+                        Nodeshot.router.navigate('map');
                     }
                 });
             }
         }
         // if not ready wait for map.collectionReady and call again
-        else{
-            this.once('collection:ready', function(){
+        else {
+            this.once('collection:ready', function () {
                 self.openLeafletPopup(id);
             });
         }
@@ -383,7 +323,7 @@ var MapContentView = Backbone.Marionette.ItemView.extend({
     /*
      * Close leaflet popup if open
      */
-    closeLeafletPopup: function(){
+    closeLeafletPopup: function () {
         var popup = $('#map-js .leaflet-popup-close-button');
         if (popup.length) {
             popup.get(0).click();
@@ -392,9 +332,9 @@ var MapContentView = Backbone.Marionette.ItemView.extend({
 });
 
 var MapLegendView = Backbone.Marionette.ItemView.extend({
-    template: '#map-legend-template',
     id: 'map-legend',
     className: 'overlay inverse',
+    template: '#map-legend-template',
 
     ui: {
         'close': 'a.icon-close'
@@ -402,18 +342,24 @@ var MapLegendView = Backbone.Marionette.ItemView.extend({
 
     events: {
         'click @ui.close': 'toggleLegend',
-        'click li a': 'toggleLegendControl'
+        'click li a': 'toggleGroup'
     },
 
-    initialize: function(collection, parent){
+    initialize: function (options, parent) {
+        var mapView = parent.map.currentView;
         this.parent = parent;
         this.legendButton = parent.toolbar.currentView.ui.legendButton;
-        this.listenTo(parent.map.currentView, 'collection:ready', this.count);
+        // display count in legend when GeoCollection is ready
+        this.listenTo(mapView, 'collection:ready', this.count);
+        // automatically render when toggleing group or recounting
+        this.listenTo(this.collection, 'change:visible counted', this.render);
+        // toggle items from map when visible attribute changes
+        mapView.listenTo(this.collection, 'change:visible', mapView.toggleLegendGroup);
     },
 
-    onRender: function(){
-        preferences = Nodeshot.preferences;
-        if (preferences.legendOpen === false || preferences.legendOpen === 'false') {
+    onRender: function () {
+        // default is true
+        if (localStorage.getObject('legendOpen') === false) {
             this.$el.hide();
         } else {
             this.legendButton.addClass('disabled');
@@ -423,14 +369,15 @@ var MapLegendView = Backbone.Marionette.ItemView.extend({
     /*
      * calculate counts
      */
-    count: function(geocollection){
+    count: function (geocollection) {
         var self = this,
             count;
-        _.each(this.collection.models, function(legend){
-            count = geocollection.where({ "status": legend.get('slug') }).length;
+        _.each(this.collection.models, function (legend) {
+            count = geocollection.where({ 'status': legend.get('slug') }).length;
             legend.set('count', count);
         });
-        this.render();
+        // trigger once all legend items have been counted
+        this.collection.trigger('counted');
     },
 
     /*
@@ -440,41 +387,33 @@ var MapLegendView = Backbone.Marionette.ItemView.extend({
         e.preventDefault();
 
         var legend = this.$el,
-            button = this.legendButton;
+            button = this.legendButton,
+            open;
 
         if (legend.is(':visible')) {
             legend.fadeOut(255);
             button.removeClass('disabled');
             button.tooltip('enable');
-            Nodeshot.preferences.legendOpen = false;
+            open = false;
         } else {
             legend.fadeIn(255);
             button.addClass('disabled');
             button.tooltip('disable').tooltip('hide');
-            Nodeshot.preferences.legendOpen = true;
+            open = true;
         }
+
+        localStorage.setItem('legendOpen', open);
     },
 
     /*
      * enable or disable something on the map
      * by clicking on its related legend control
      */
-    toggleLegendControl: function (e) {
+    toggleGroup: function (e) {
         e.preventDefault();
-
-        var a = $(e.currentTarget),
-            li = a.parent(),
-            status = a.attr('data-status');
-
-        if (li.hasClass('disabled')) {
-            li.removeClass('disabled');
-            // TODO
-            //this.toggleMarkers('show', status);
-        } else {
-            li.addClass('disabled');
-            // TODO
-            //this.toggleMarkers('hide', status);
-        }
+        var status = $(e.currentTarget).attr('data-status'),
+            item = this.collection.get(status);
+        item.set('visible', !item.get('visible'));
     }
 });
 
@@ -500,11 +439,11 @@ var MapToolbarView = Backbone.Marionette.ItemView.extend({
         'click @ui.legendButton': 'toggleLegend'
     },
 
-    initialize: function(model, parent){
+    initialize: function (model, parent) {
         this.parent = parent;
     },
 
-    onRender: function(){
+    onRender: function () {
         var self = this;
         // init tooltip
         this.ui.buttons.tooltip();
@@ -541,7 +480,7 @@ var MapToolbarView = Backbone.Marionette.ItemView.extend({
         var toolbar = this.parent.toolbar.$el,
             target = $(e.currentTarget);
         // show toolbar
-        if(toolbar.is(':hidden')){
+        if (toolbar.is(':hidden')) {
             // just add display:block
             // which overrides css media-query
             toolbar.show();
@@ -549,13 +488,13 @@ var MapToolbarView = Backbone.Marionette.ItemView.extend({
             target.css('right', '-60px');
         }
         // hide toolbar
-        else{
+        else {
             // instead of using jQuery.hide() which would hide the toolbar also
             // if the user enlarged the screen, we clear the style attribute
             // which will cause the toolbar to be hidden only on narrow screens
             toolbar.attr('style', '');
             // close any open panel
-            if($('.side-panel:visible').length){
+            if ($('.side-panel:visible').length) {
                 $('.mask').trigger('click');
             }
             // eliminate negative margin correction
@@ -567,7 +506,7 @@ var MapToolbarView = Backbone.Marionette.ItemView.extend({
     /*
      * redirects to MapPanelsView
      */
-    toggleLegend: function(e){
+    toggleLegend: function (e) {
         this.parent.legend.currentView.toggleLegend(e);
     },
 
@@ -583,13 +522,13 @@ var MapToolbarView = Backbone.Marionette.ItemView.extend({
      */
     switchMapMode: function (e) {
         e.preventDefault();
-        $.createModal({message:'not implemented yet'});
+        $.createModal({message: 'not implemented yet'});
     },
 
     // TODO
-    addNode: function(){},
+    addNode: function () {},
     // TODO
-    removeAddressFoundMarker: function(){}
+    removeAddressFoundMarker: function () {}
 });
 
 var MapPanelsView = Backbone.Marionette.ItemView.extend({
@@ -609,15 +548,15 @@ var MapPanelsView = Backbone.Marionette.ItemView.extend({
         'switch-change #fn-map-layers .toggle-layer-data': 'toggleLayerData'
     },
 
-    initialize: function(model, parent){
+    initialize: function (model, parent) {
         this.parent = parent;
         this.mapView = parent.map.currentView;
         this.toolbarView = parent.toolbar.currentView;
         this.toolbarButtons = this.toolbarView.ui.buttons;
     },
 
-    onRender: function(){
-        this.ui.tools.tooltip()
+    onRender: function () {
+        this.ui.tools.tooltip();
         // activate switch
         this.ui.switches.bootstrapSwitch();
         this.ui.switches.bootstrapSwitch('setSizeClass', 'switch-small');
@@ -640,7 +579,10 @@ var MapPanelsView = Backbone.Marionette.ItemView.extend({
         var button = $(e.currentTarget),
             panelId = button.attr('data-panel'),
             panel = $('#' + panelId),
-            self = this;
+            self = this,
+            // determine distance from top
+            distanceFromTop = button.offset().top - $('body > header').eq(0).outerHeight(),
+            preferencesHeight;
 
         // if no panel return here
         if (!panel.length) {
@@ -649,30 +591,27 @@ var MapPanelsView = Backbone.Marionette.ItemView.extend({
 
         // hide any open tooltip
         $('#map-toolbar .tooltip').hide();
-
-        // determine distance from top
-        var distanceFromTop = button.offset().top - $('body > header').eq(0).outerHeight();
         panel.css('top', distanceFromTop);
 
         // adjust height of panel if marked as 'adjust-height'
         if (panel.hasClass('adjust-height')) {
-            var preferencesHeight = $('#map-toolbar').height() - distanceFromTop - 18;
+            preferencesHeight = $('#map-toolbar').height() - distanceFromTop - 18;
             panel.height(preferencesHeight);
         }
 
-        panel.fadeIn(25, function(){
+        panel.fadeIn(25, function () {
             panel.find('.scroller').scroller('reset');
             button.addClass('active');
             button.tooltip('hide').tooltip('disable');
             // create a mask for easy closing
-            $.mask(panel, function(e){
+            $.mask(panel, function (e) {
                 // close function
-                if(panel.is(':visible')){
+                if (panel.is(':visible')) {
                     panel.hide();
                     self.toolbarButtons.removeClass('active');
                     button.tooltip('enable');
                     // if clicking again on the same button avoid reopening the panel
-                    if($(e.target).attr('data-panel') == panelId){
+                    if ($(e.target).attr('data-panel') === panelId) {
                         e.stopPropagation();
                         e.preventDefault();
                     }
@@ -688,21 +627,21 @@ var MapPanelsView = Backbone.Marionette.ItemView.extend({
         e.preventDefault();
         $.createModal({ message: 'not implemented yet' });
         return false;
-        var button = $(e.currentTarget),
-            active_buttons = $('#fn-map-tools .tool.active');
-        // if activating a tool
-        if (!button.hasClass('active')) {
-            // deactivate any other
-            active_buttons.removeClass('active');
-            active_buttons.tooltip('enable');
-            button.addClass('active');
-            button.tooltip('hide');
-            button.tooltip('disable');
-        // deactivate
-        } else {
-            button.removeClass('active');
-            button.tooltip('enable');
-        }
+        //var button = $(e.currentTarget),
+        //    active_buttons = $('#fn-map-tools .tool.active');
+        //// if activating a tool
+        //if (!button.hasClass('active')) {
+        //    // deactivate any other
+        //    active_buttons.removeClass('active');
+        //    active_buttons.tooltip('enable');
+        //    button.addClass('active');
+        //    button.tooltip('hide');
+        //    button.tooltip('disable');
+        //// deactivate
+        //} else {
+        //    button.removeClass('active');
+        //    button.tooltip('enable');
+        //}
     },
 
     /*
@@ -720,8 +659,8 @@ var MapPanelsView = Backbone.Marionette.ItemView.extend({
         e.preventDefault();
         this.removeAddressMarker();
         var self = this,
-            searchString = $("#fn-search-address input").val(),
-            url = "//nominatim.openstreetmap.org/search?format=json&q=" + searchString;
+            searchString = $('#fn-search-address input').val(),
+            url = '//nominatim.openstreetmap.org/search?format=json&q=' + searchString;
         $.ajax({
             url: url,
             dataType: 'json',
@@ -739,12 +678,12 @@ var MapPanelsView = Backbone.Marionette.ItemView.extend({
                         latlng = L.latLng(lat, lng),
                         map = self.mapView.map;
                     // put marker on the map
-                    self.addressMarker = L.marker(latlng)
+                    self.addressMarker = L.marker(latlng);
                     self.addressMarker.addTo(map);
                     // go to marker and zoom in
                     map.setView(latlng, 17);
                     // bind for removal
-                    $('#fn-search-address-mask').one('click', function(){
+                    $('#fn-search-address-mask').one('click', function () {
                         self.removeAddressMarker(1500);  // add a fadeOut
                     });
                 }
@@ -760,8 +699,8 @@ var MapPanelsView = Backbone.Marionette.ItemView.extend({
         speed = speed || 0;
         var marker = this.addressMarker,
             self = this;
-        if (typeof(marker) != "undefined") {
-            $([marker._icon, marker._shadow]).fadeOut(speed, function(){
+        if (typeof(marker) !== 'undefined') {
+            $([marker._icon, marker._shadow]).fadeOut(speed, function () {
                 self.mapView.map.removeLayer(marker);
                 delete(self.addressMarker);
             });
@@ -769,7 +708,7 @@ var MapPanelsView = Backbone.Marionette.ItemView.extend({
     },
 
     // TODO
-    toggleLayerData: function(){}
+    toggleLayerData: function () {}
 });
 
 var MapView = Backbone.Marionette.ItemView.extend({
@@ -806,8 +745,8 @@ var MapView = Backbone.Marionette.ItemView.extend({
 
     initialize: function () {
         // bind to namespaced events
-        //$(window).on("beforeunload.map", _.bind(this.beforeunload, this));
-        //$(window).on("resize.map", _.bind(this.resize, this));
+        //$(window).on('beforeunload.map', _.bind(this.beforeunload, this));
+        //$(window).on('resize.map', _.bind(this.resize, this));
 
         this.resetDataContainers();
         Nodeshot.onNodeClose = '#/map';
@@ -826,7 +765,7 @@ var MapView = Backbone.Marionette.ItemView.extend({
         $('#map-container input.switch').bootstrapSwitch('setSizeClass', 'switch-small');
 
         // activate scroller
-        $("#map-container .scroller").scroller({
+        $('#map-container .scroller').scroller({
             trackMargin: 6
         });
 
@@ -859,9 +798,9 @@ var MapView = Backbone.Marionette.ItemView.extend({
         // if only 1 layer available
         // preselect it in the add node form
         var layer_options = $('#id_layer option[value]');
-        if(layer_options.length === 1){
+        if (layer_options.length === 1) {
             var value = layer_options.eq(0).val();
-            $('#id_layer').selectpicker('val', value)
+            $('#id_layer').selectpicker('val', value);
         }
     },
 
@@ -873,8 +812,8 @@ var MapView = Backbone.Marionette.ItemView.extend({
     //    this.storeCoordinates();
     //
     //    // unbind the namespaced events
-    //    $(window).off("beforeunload.map");
-    //    $(window).off("resize.map");
+    //    $(window).off('beforeunload.map');
+    //    $(window).off('resize.map');
     //},
 
     /* --- Nodeshot methods --- */
@@ -925,10 +864,10 @@ var MapView = Backbone.Marionette.ItemView.extend({
     //    MapLayoutView.setMapDimensions();
     //
     //    // when narrowing the window to medium-small size
-    //    if($(window).width() <= 767){
+    //    if ($(window).width() <= 767) {
     //        // if any side-panel remains open
     //        var panels = $('.side-panel:visible');
-    //        if(panels.length){
+    //        if (panels.length) {
     //            // trigger click on header to close it
     //            $('body>header').trigger('click');
     //        }
@@ -1016,12 +955,12 @@ var MapView = Backbone.Marionette.ItemView.extend({
             }).addTo(self.map);
             self.newNodeMarker = marker;
 
-            self.getAddress(e.latlng)
+            self.getAddress(e.latlng);
 
             self.newNodeMarker.on('dragend', function (event) {
-                var marker = event.target;
-                var result = marker.getLatLng();
-                self.getAddress(result)
+                var marker = event.target,
+                    result = marker.getLatLng();
+                self.getAddress(result);
             });
             self.map.panTo(e.latlng);
 
@@ -1161,10 +1100,7 @@ var MapView = Backbone.Marionette.ItemView.extend({
         }
 
         // reopen legend if necessary
-        if (
-            (Nodeshot.preferences.legendOpen === true || Nodeshot.preferences.legendOpen === "true") &&
-            this.ui.legend.is(':hidden')
-        ) {
+        if (localStorage.getObject(legendOpen) && this.ui.legend.is(':hidden')) {
             this.ui.legend.show();
         }
 
@@ -1224,25 +1160,25 @@ var MapView = Backbone.Marionette.ItemView.extend({
             visibleStatuses = Nodeshot.preferences.visibleStatuses.split(',');
 
         // mark each marker visibility depending on visible layers
-        _.forEach(markers, function(marker){
+        _.forEach(markers, function (marker) {
             marker.visible = action === 'show';
         });
 
-        if(action === 'show'){
+        if (action === 'show') {
             // add layer to map
             this.map.addLayer(cluster);
             // show
             this.showVisibleClusters();
             // remember choice
-            if(visibleStatuses.indexOf(status) < 0){
+            if (visibleStatuses.indexOf(status) < 0) {
                 visibleStatuses.push(status);
             }
         }
-        else if(action === 'hide'){
+        else if (action === 'hide') {
             this.map.removeLayer(cluster);
             // remember choice
             var index = visibleStatuses.indexOf(status);
-            if(index > -1){
+            if (index > -1) {
                 visibleStatuses.splice(index, 1);
             }
         }
@@ -1296,73 +1232,73 @@ var MapView = Backbone.Marionette.ItemView.extend({
      * Overridden by custom django-leaflet template in
      * {UI}/templates/leaflet/_lefalet_map.html
      */
-    //loadDjangoLeafletMap: function(){},
+    //loadDjangoLeafletMap: function () {},
 
     /*
      * Loads Map Content
      */
-    loadMapData: function () {
-        var options = {
-            fill: true,
-            lineCap: 'circle',
-            radius: 6,
-            opacity: 1,
-            fillOpacity: 0.7
-        },
-            popUpTemplate = _.template($('#map-popup-template').html()),
-            preferences = Nodeshot.preferences;
-
-        // visible statuses
-        preferences.visibleStatuses = preferences.visibleStatuses || _.keys(Nodeshot.statuses)
-        // visible layers
-        preferences.visibleLayers = preferences.visibleLayers || Nodeshot.layersSlugs;
-
-        // loop over each layer
-        for (var i = 0; i < Nodeshot.layers.length; i++) {
-            var layer = Nodeshot.layers[i],
-                visibleStatuses = Nodeshot.preferences.visibleStatuses.split(','),
-                visibleLayers = Nodeshot.preferences.visibleLayers.split(',');
-
-            var leafletLayer = L.geoJson(layer.nodes_geojson, {
-                style: function (feature) {
-                    var status = Nodeshot.statuses[feature.properties.status];
-                    options.fillColor = status.fill_color;
-                    options.stroke = status.stroke_width > 0;
-                    options.weight = status.stroke_width;
-                    options.color = status.stroke_color;
-                    options.className = 'marker-' + status.slug;
-                    return options
-                },
-                onEachFeature: function (feature, layer) {
-                    // add slug in properties
-                    feature.properties.slug = feature.id;
-                    // bind leaflet popup
-                    layer.bindPopup(popUpTemplate(feature.properties));
-                },
-                pointToLayer: function (feature, latlng) {
-                    var marker = L.circleMarker(latlng, options);
-
-                    // marks as visible or not depending on preferences
-                    if(visibleStatuses.indexOf(feature.properties.status) >= 0 && visibleLayers.indexOf(feature.properties.layer) >= 0){
-                        marker.visible = true;
-                    }
-                    else{
-                        marker.visible = false;
-                    }
-
-                    marker.on('click', function (e) {
-                        Backbone.history.navigate('#/map/' + feature.id);
-                    });
-
-                    Nodeshot.statuses[feature.properties.status].nodes.push(marker);
-                    Nodeshot.nodes.push(marker);
-                    Nodeshot.nodesNamed[feature.id] = marker;
-                    return marker
-                }
-            });
-        }
-        this.countVisibleNodesByStatus();
-    },
+    //loadMapData: function () {
+    //    var options = {
+    //        fill: true,
+    //        lineCap: 'circle',
+    //        radius: 6,
+    //        opacity: 1,
+    //        fillOpacity: 0.7
+    //    },
+    //        popUpTemplate = _.template($('#map-popup-template').html()),
+    //        preferences = Nodeshot.preferences;
+    //
+    //    // visible statuses
+    //    preferences.visibleStatuses = preferences.visibleStatuses || _.keys(Nodeshot.statuses)
+    //    // visible layers
+    //    preferences.visibleLayers = preferences.visibleLayers || Nodeshot.layersSlugs;
+    //
+    //    // loop over each layer
+    //    for (var i = 0; i < Nodeshot.layers.length; i++) {
+    //        var layer = Nodeshot.layers[i],
+    //            visibleStatuses = Nodeshot.preferences.visibleStatuses.split(','),
+    //            visibleLayers = Nodeshot.preferences.visibleLayers.split(',');
+    //
+    //        var leafletLayer = L.geoJson(layer.nodes_geojson, {
+    //            style: function (feature) {
+    //                var status = Nodeshot.statuses[feature.properties.status];
+    //                options.fillColor = status.fill_color;
+    //                options.stroke = status.stroke_width > 0;
+    //                options.weight = status.stroke_width;
+    //                options.color = status.stroke_color;
+    //                options.className = 'marker-' + status.slug;
+    //                return options
+    //            },
+    //            onEachFeature: function (feature, layer) {
+    //                // add slug in properties
+    //                feature.properties.slug = feature.id;
+    //                // bind leaflet popup
+    //                layer.bindPopup(popUpTemplate(feature.properties));
+    //            },
+    //            pointToLayer: function (feature, latlng) {
+    //                var marker = L.circleMarker(latlng, options);
+    //
+    //                // marks as visible or not depending on preferences
+    //                if (visibleStatuses.indexOf(feature.properties.status) >= 0 && visibleLayers.indexOf(feature.properties.layer) >= 0) {
+    //                    marker.visible = true;
+    //                }
+    //                else {
+    //                    marker.visible = false;
+    //                }
+    //
+    //                marker.on('click', function (e) {
+    //                    Nodeshot.router.navigate('#/map/' + feature.id);
+    //                });
+    //
+    //                Nodeshot.statuses[feature.properties.status].nodes.push(marker);
+    //                Nodeshot.nodes.push(marker);
+    //                Nodeshot.nodesNamed[feature.id] = marker;
+    //                return marker
+    //            }
+    //        });
+    //    }
+    //    this.countVisibleNodesByStatus();
+    //},
 
     clusterizeMarkers: function () {
         // loop over each status
@@ -1373,15 +1309,15 @@ var MapView = Backbone.Marionette.ItemView.extend({
                 leafletLayer = L.layerGroup(status.nodes);
 
             // TODO: this is ugly!
-            $('head').append("\
-                <style type='text/css'>\
-                .marker-" + key + " {\
-                    background-color:" + status.fill_color + ";\
-                    color:" + status.text_color + ";\
-                    border: " + status.stroke_width + "px solid " + status.stroke_color + ";\
+            $('head').append('\
+                <style type=\'text/css\'>\
+                .marker-' + key + ' {\
+                    background-color:' + status.fill_color + ';\
+                    color:' + status.text_color + ';\
+                    border: ' + status.stroke_width + 'px solid ' + status.stroke_color + ';\
                 }\
                 </style>\
-            ");
+            ');
 
             // group markers in clusters
             var group = new L.MarkerClusterGroup({
@@ -1471,14 +1407,14 @@ var MapView = Backbone.Marionette.ItemView.extend({
         this.showVisibleClusters();
 
         // remember choice
-        if(data.value){
-            if(visibleLayers.indexOf(slug) < 0){
+        if (data.value) {
+            if (visibleLayers.indexOf(slug) < 0) {
                 visibleLayers.push(slug);
             }
         }
-        else{
+        else {
             var index = visibleLayers.indexOf(slug);
-            if(index > -1){
+            if (index > -1) {
                 visibleLayers.splice(index, 1);
             }
         }
@@ -1489,7 +1425,7 @@ var MapView = Backbone.Marionette.ItemView.extend({
      * Get Address using OSM Nominatim service
      */
     getAddress: function (latlng) {
-        var arrayLatLng = latlng.toString().split(",");
+        var arrayLatLng = latlng.toString().split(',');
         var lat = arrayLatLng[0].slice(7);
         var lng = arrayLatLng[1].slice(0, -1);
         var url = '//nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lng + '&zoom=18&addressdetails=0';
@@ -1498,7 +1434,7 @@ var MapView = Backbone.Marionette.ItemView.extend({
             dataType: 'json',
             success: function (response) {
                 var address = response.display_name;
-                $("#id_address").val(address);
+                $('#id_address').val(address);
             }
         });
     },
@@ -1507,8 +1443,8 @@ var MapView = Backbone.Marionette.ItemView.extend({
     //    e.preventDefault();
     //    this.removeAddressFoundMarker()
     //    var self = this
-    //    var searchString = $("#fn-search-address input").val()
-    //    var url = "//nominatim.openstreetmap.org/search?format=json&q=" + searchString
+    //    var searchString = $('#fn-search-address input').val()
+    //    var url = '//nominatim.openstreetmap.org/search?format=json&q=' + searchString
     //    $.ajax({
     //        url: url,
     //        dataType: 'json',
@@ -1531,7 +1467,7 @@ var MapView = Backbone.Marionette.ItemView.extend({
     //},
     //
     //removeAddressFoundMarker: function () {
-    //    if (typeof (this.addressFoundMarker) != "undefined") {
+    //    if (typeof (this.addressFoundMarker) != 'undefined') {
     //        this.map.removeLayer(this.addressFoundMarker)
     //    }
     //},
@@ -1539,7 +1475,7 @@ var MapView = Backbone.Marionette.ItemView.extend({
     /*
      * remember hide/show nodes based on status choices
      */
-    rememberVisibleStatuses: function(){
+    rememberVisibleStatuses: function () {
         var visibleStatuses = Nodeshot.preferences.visibleStatuses.split(',');
 
         // find out which statuses have to be disabled in the legend
@@ -1547,8 +1483,8 @@ var MapView = Backbone.Marionette.ItemView.extend({
         toDisable = _.difference(_.keys(Nodeshot.statuses), visibleStatuses)
 
         // add disabled class
-        toDisable.forEach(function(status){
-            $('#map-legend a[data-status="'+status+'"]').parents('li').addClass('disabled');
+        toDisable.forEach(function (status) {
+            $('#map-legend a[data-status='+status+']').parents('li').addClass('disabled');
         });
     },
 
@@ -1556,9 +1492,9 @@ var MapView = Backbone.Marionette.ItemView.extend({
      * count nodes of a certain status
      * TODO this logic should probably be a separate view or something can be managed separately
      */
-    countVisibleNodesByStatus: function(){
+    countVisibleNodesByStatus: function () {
         // reset visibleNodes counter
-        for(key in Nodeshot.statuses){
+        for(key in Nodeshot.statuses) {
             Nodeshot.statuses[key].visibleNodes = []
         }
         // determine how many visible nodes
@@ -1569,7 +1505,7 @@ var MapView = Backbone.Marionette.ItemView.extend({
             }
         }
         // update UI ... very ugly
-        for(key in Nodeshot.statuses){
+        for(key in Nodeshot.statuses) {
             $('#legend-status-' + key + ' .stats').text(Nodeshot.statuses[key].visibleNodes.length)
         }
     }
