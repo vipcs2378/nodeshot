@@ -257,11 +257,18 @@ class DefaultUiTest(TestCase):
         browser.find_element_by_css_selector('#map-toolbar .icon-layer-2:not(.active)')
         browser.find_element_by_css_selector('#map-toolbar .icon-layer-2').click()
         browser.find_element_by_css_selector('#map-toolbar .icon-layer-2.active')
-        self.assertEqual(len(browser.find_elements_by_css_selector('#fn-map-layers .switch-left')), 4)
+        self.assertEqual(len(browser.find_elements_by_css_selector('#fn-map-layers .switch-on')), 4)
+        self.assertEqual(len(browser.find_elements_by_css_selector('#fn-map-layers .switch-off')), 0)
         self.assertTrue(panel.is_displayed())
         # ensure it doesn't close after clicking on it
         panel.click()
         self.assertTrue(panel.is_displayed())
+        # turn off 1 layer
+        browser.execute_script('$("#map-control-layer-rome").trigger("click")')
+        sleep(0.1)
+        self.assertEqual(len(browser.find_elements_by_css_selector('#fn-map-layers .switch-off')), 1)
+        self.assertEqual(len(browser.find_elements_by_css_selector('#fn-map-layers .switch-on')), 3)
+        
         # click somewhere else to close
         self.browser.find_element_by_css_selector('#fn-map-layers-mask').click()
         self.assertFalse(panel.is_displayed())

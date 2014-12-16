@@ -420,7 +420,7 @@
                         <label for="map-control-layer-<%= layer.slug %>" class="inline">
                             <%= layer.name %>
                         </label>
-                        <input type="checkbox" checked
+                        <input type="checkbox" <% if (layer.visible) { %>checked<% } %>
                                class="switch toggle-layer-data"
                                id="map-control-layer-<%= layer.slug %>"
                                data-slug="<%= layer.slug %>">

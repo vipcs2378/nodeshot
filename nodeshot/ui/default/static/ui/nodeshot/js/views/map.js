@@ -204,9 +204,8 @@ var MapContentView = Backbone.Marionette.ItemView.extend({
             trackResize: true
         });
 
-        // load data
+        // clusterize
         //this.clusterizeMarkers();
-        //this.rememberVisibleStatuses();
     },
 
     /*
@@ -235,6 +234,10 @@ var MapContentView = Backbone.Marionette.ItemView.extend({
                 self.trigger('collection:merged');
             });
         });
+        // toggle legend group from map when visible attribute changes
+        this.listenTo(Nodeshot.legend, 'change:visible', this.toggleLegendGroup);
+        // toggle layer data when visible attribute changes
+        this.listenTo(Nodeshot.layers, 'change:visible', this.toggleLayerData);
     },
 
     /*
@@ -260,6 +263,23 @@ var MapContentView = Backbone.Marionette.ItemView.extend({
     },
 
     /*
+    * show / hide from map items of a legend group
+    */
+    toggleLayerData: function (layer, visible) {
+        var geo = this.collection,
+            self = this;
+        if (visible === false) {
+            geo.remove(geo.where({ layer: layer.id }));
+            this.trigger('collection:ready', geo);
+        }
+        else{
+            geo.merge({ slug: layer.id }).done(function () {
+                self.trigger('collection:ready', geo);
+            });
+        }
+    },
+
+    /*
      * Load markers on map using GeoJSON
      */
     addGeoModelToMap: function (model) {
@@ -272,7 +292,7 @@ var MapContentView = Backbone.Marionette.ItemView.extend({
         leafletLayer.bindPopup(popUpTemplate(data));
         // when popup opens, change the URL fragment
         leafletLayer.on('popupopen', function () {
-            navigate('map/' + json.slug);
+            navigate('map/' + data.slug);
         });
         // when popup closes (and no new popup opens)
         // URL fragment goes back to initial state
@@ -353,8 +373,6 @@ var MapLegendView = Backbone.Marionette.ItemView.extend({
         this.listenTo(mapView, 'collection:ready', this.count);
         // automatically render when toggleing group or recounting
         this.listenTo(this.collection, 'change:visible counted', this.render);
-        // toggle items from map when visible attribute changes
-        mapView.listenTo(this.collection, 'change:visible', mapView.toggleLegendGroup);
     },
 
     onRender: function () {
@@ -434,7 +452,6 @@ var MapToolbarView = Backbone.Marionette.ItemView.extend({
         'click #map-toolbar .icon-search': 'removeAddressFoundMarker',
         'click @ui.buttons': 'togglePanel',
         'click @ui.switchMapMode': 'switchMapMode',
-        'switch-change #fn-map-layers .toggle-layer-data': 'toggleLayerData',
         // siblings events
         'click @ui.legendButton': 'toggleLegend'
     },
@@ -545,7 +562,7 @@ var MapPanelsView = Backbone.Marionette.ItemView.extend({
         'submit #fn-search-address form': 'searchAddress',
         'click #fn-map-tools .tool': 'toggleTool',
         'click #toggle-toolbar': 'toggleToolbar',
-        'switch-change #fn-map-layers .toggle-layer-data': 'toggleLayerData'
+        'switch-change #fn-map-layers .toggle-layer-data': 'toggleLayer'
     },
 
     initialize: function (model, parent) {
@@ -707,8 +724,13 @@ var MapPanelsView = Backbone.Marionette.ItemView.extend({
         }
     },
 
-    // TODO
-    toggleLayerData: function () {}
+    /**
+     * Hide / show layer data on map
+     */
+    toggleLayer: function (item, data) {
+        var layer = this.collection.get(data.el.attr('data-slug'));
+        layer.set('visible', data.value);
+    }
 });
 
 var MapView = Backbone.Marionette.ItemView.extend({

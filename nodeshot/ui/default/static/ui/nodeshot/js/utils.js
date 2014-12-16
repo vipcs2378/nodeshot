@@ -24,7 +24,7 @@ $.getCookie = function (name) {
         cookies,
         cookie,
         i;
-    
+
     if (document.cookie && document.cookie !== '') {
         cookies = document.cookie.split(';');
 
@@ -142,8 +142,10 @@ $.toggleLoading = function (operation) {
  * returns an object with height and width
  */
 $.fn.getHiddenDimensions = function () {
-    var self = $(this), // this element is hidden
-        parents = self.parents(':hidden'); // look for hidden parent elements
+    var self = $(this),
+        hidden,
+        parents,
+        dimensions;
 
     // return immediately if element is visible
     if (self.is(':visible')) {
@@ -153,34 +155,40 @@ $.fn.getHiddenDimensions = function () {
         };
     }
 
+    hidden = self; // this element is hidden
+    parents = self.parents(':hidden'); // look for hidden parent elements
+
     // if any hidden parent element
     if (parents.length) {
         // add to hidden collection
-        self = $().add(parents).add(self);
+        hidden = $().add(parents).add(hidden);
     }
 
     /*
-     trick all the hidden elements in a way that
-     they wont be shown but we'll be able to calculate their width
+    trick all the hidden elements in a way that
+    they wont be shown but we'll be able to calculate their width
     */
-    self.css({
+    hidden.css({
         position: 'absolute',
         visibility: 'hidden',
         display: 'block'
     });
 
+    // store width of current element
+    dimensions = {
+        width: self.outerWidth(),
+        height: self.outerHeight()
+    }
+
     // reset hacked css on hidden elements
-    self.css({
+    hidden.css({
         position: '',
         visibility: '',
         display: ''
     });
 
     // return width
-    return {
-        width: self.outerWidth(),
-        height: self.outerHeight()
-    };
+    return dimensions;
 };
 
 /*

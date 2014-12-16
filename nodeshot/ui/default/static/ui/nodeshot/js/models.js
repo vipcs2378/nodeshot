@@ -1,5 +1,13 @@
 'use strict';
 
+
+var BaseModel = Backbone.Model.extend({
+    url: function () {
+        var origUrl = Backbone.Model.prototype.url.call(this);
+        return origUrl + (origUrl.charAt(origUrl.length - 1) === '/' ? '' : '/');
+    }
+});
+
 var GeoModel = Backbone.Model.extend({
     idAttribute: 'slug',
     leafletOptions: {
@@ -159,32 +167,53 @@ var LegendCollection = Backbone.Collection.extend({
     model: LegendModel
 });
 
-var LayerCollection = Backbone.Collection.extend({
-    url: '/api/v1/layers/',
-    model: Backbone.Model
-});
-
-var Page = Backbone.Model.extend({
-    urlRoot: '/api/v1/pages/',
+var Layer = BaseModel.extend({
+    urlRoot: '/api/v1/layers/',
     idAttribute: 'slug',
 
-    url: function () {
-        var origUrl = Backbone.Model.prototype.url.call(this);
-        return origUrl + (origUrl.charAt(origUrl.length - 1) === '/' ? '' : '/');
+    defaults: {
+        'visible': true
+    },
+
+    initialize: function () {
+        var hiddenLayers = localStorage.getObject('hiddenLayers', []);
+        if (_.include(hiddenLayers, this.get('slug'))) {
+            this.set('visible', false);
+        }
+        this.on('change:visible', this.storeHidden);
+    },
+
+    /**
+    * remember hidden legend groups
+    */
+    storeHidden: function (layer, visible) {
+        var hiddenLayers = localStorage.getObject('hiddenLayers', []);
+        if (visible) {
+            hiddenLayers = _.without(hiddenLayers, layer.id);
+        }
+        else {
+            hiddenLayers = _.union(hiddenLayers, [layer.id]);
+        }
+        localStorage.setObject('hiddenLayers', hiddenLayers);
     }
 });
 
-var Node = Backbone.Model.extend({
+var LayerCollection = Backbone.Collection.extend({
+    url: '/api/v1/layers/',
+    model: Layer
+});
+
+var Page = BaseModel.extend({
+    urlRoot: '/api/v1/pages/',
+    idAttribute: 'slug'
+});
+
+var Node = BaseModel.extend({
     urlRoot: '/api/v1/nodes/',
     idAttribute: 'slug',
 
     defaults: {
         'relationships': false
-    },
-
-    url: function () {
-        var origUrl = Backbone.Model.prototype.url.call(this);
-        return origUrl + (origUrl.charAt(origUrl.length - 1) === '/' ? '' : '/');
     }
 });
 
@@ -242,7 +271,7 @@ var NodeCollection = Backbone.PageableCollection.extend({
     }
 });
 
-var User = Backbone.Model.extend({
+var User = BaseModel.extend({
     urlRoot: '/api/v1/profiles/',
     idAttribute: 'username',
 
@@ -328,15 +357,10 @@ var User = Backbone.Model.extend({
             // trigger custom event
             self.trigger('loggedout');
         });
-    },
-
-    url: function () {
-        var origUrl = Backbone.Model.prototype.url.call(this);
-        return origUrl + (origUrl.charAt(origUrl.length - 1) === '/' ? '' : '/');
     }
 });
 
-var Notification = Backbone.Model.extend({
+var Notification = BaseModel.extend({
     urlRoot: '/api/v1/account/notifications/',
 
     initialize: function () {
@@ -349,11 +373,6 @@ var Notification = Backbone.Model.extend({
     setIcon: function () {
         var value = this.get('type').split('_')[0];
         this.set('icon', value);
-    },
-
-    url: function () {
-        var origUrl = Backbone.Model.prototype.url.call(this);
-        return origUrl + (origUrl.charAt(origUrl.length - 1) === '/' ? '' : '/') + '?read=false';
     }
 });
 
